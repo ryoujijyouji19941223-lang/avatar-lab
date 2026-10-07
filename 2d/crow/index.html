@@ -45,7 +45,7 @@ input[type=range]{width:100%}
   <p>頭だけを軽く動かし、体は小さな呼吸だけ。まばたきと口パクを切り替える v0.3。</p>
 
   <div class="stage">
-    <div class="badge">2D / crow / v0.3</div>
+    <div class="badge">2D / crow / v0.3.1</div>
     <div id="avatarWrap">
       <img id="bodyAvatar" class="avatarImg" alt="">
       <img id="headAvatar" class="avatarImg" alt="カラスの2Dアバター">
@@ -201,24 +201,62 @@ function applyFace(p,now){
 
 async function ensureLandmarker(){
   if(landmarker)return true;
-  modelChip.textContent='顔認識: 読込中';
-  modelChip.className='chip wait';
-  statusEl.textContent='顔認識モデルを読み込み中…';
+  chip(modelChip,'顔認識: SDK読込中','wait');
+  statusEl.textContent='MediaPipe本体を読み込み中…';
+
+  let mp=null;
+  let lastErr=null;
+  const sdkUrls=[
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/vision_bundle.js',
+    'https://unpkg.com/@mediapipe/tasks-vision@0.10.22/vision_bundle.js?module'
+  ];
+
+  for(const url of sdkUrls){
+    try{
+      const mod=await import(url);
+      mp=mod.default||mod;
+      if((mp.FilesetResolver||mod.FilesetResolver)&&(mp.FaceLandmarker||mod.FaceLandmarker)){
+        mp={FilesetResolver:mp.FilesetResolver||mod.FilesetResolver,FaceLandmarker:mp.FaceLandmarker||mod.FaceLandmarker};
+        break;
+      }
+    }catch(e){
+      console.warn('MediaPipe SDK load failed:',url,e);
+      lastErr=e;
+    }
+  }
+
+  if(!mp){
+    chip(modelChip,'顔認識: SDK失敗','bad');
+    statusEl.textContent='MediaPipe本体を読み込めませんでした。通信/CDN読み込みで止まっています。\n'+(lastErr?.message||'');
+    return false;
+  }
+
   try{
-    const mod=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm');
-    const vision=await mod.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
-    landmarker=await mod.FaceLandmarker.createFromOptions(vision,{
-      baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'},
+    chip(modelChip,'顔認識: WASM読込中','wait');
+    statusEl.textContent='顔認識エンジン(WASM)を読み込み中…';
+    const vision=await mp.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm'
+    );
+
+    chip(modelChip,'顔認識: モデル読込中','wait');
+    statusEl.textContent='顔の学習済みモデルを読み込み中…';
+    landmarker=await mp.FaceLandmarker.createFromOptions(vision,{
+      baseOptions:{
+        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+      },
       runningMode:'VIDEO',
       numFaces:1,
-      outputFaceBlendshapes:true
+      outputFaceBlendshapes:true,
+      minFaceDetectionConfidence:0.5,
+      minFacePresenceConfidence:0.5,
+      minTrackingConfidence:0.5
     });
     chip(modelChip,'顔認識: OK','ok');
     return true;
   }catch(e){
     console.error(e);
-    chip(modelChip,'顔認識: 読込失敗','bad');
-    statusEl.textContent='顔認識モデルの読み込みに失敗しました。ページ再読み込み後に再試行してください。';
+    chip(modelChip,'顔認識: モデル失敗','bad');
+    statusEl.textContent='MediaPipe本体は読めましたが、WASM/顔モデルの初期化で失敗しました。\n'+(e?.message||'');
     return false;
   }
 }
