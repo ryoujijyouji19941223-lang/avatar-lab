@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ケモノコーチ アバター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <main id="stage" data-bg="studio">
+    <svg id="avatar" viewBox="0 0 800 800" preserveAspectRatio="xMidYMax meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="獣人コーチのアバター"></svg>
+    <button id="showUi" class="show-ui" type="button">操作パネルを表示 <kbd>H</kbd></button>
+  </main>
+
+  <aside id="panel" aria-label="操作パネル">
+    <header class="brand">
+      <p class="eyebrow">2D アバター ・ OBS / PNGTuber 対応</p>
+      <h1>ケモノコーチ</h1>
+    </header>
+
+    <section class="group">
+      <h2>キャラクター</h2>
+      <div class="seg" id="speciesSeg" role="group" aria-label="キャラクター"></div>
+    </section>
+
+    <section class="group">
+      <h2>表情 <span class="hint">数字キー 1〜7</span></h2>
+      <div class="expr-grid" id="exprGrid" role="group" aria-label="表情"></div>
+    </section>
+
+    <section class="group">
+      <h2>口パク</h2>
+      <div class="row">
+        <button id="micBtn" class="btn primary" type="button" aria-pressed="false">マイクで口パク</button>
+        <button id="testTalkBtn" class="btn" type="button" aria-pressed="false">テスト再生</button>
+      </div>
+      <label class="slider" for="sens">
+        <span>マイク感度</span>
+        <input type="range" id="sens" min="4" max="80" step="1" value="24">
+      </label>
+      <div class="meter" aria-hidden="true"><span id="meterBar"></span></div>
+      <p class="note">スペースキーを押している間も口が開きます。</p>
+    </section>
+
+    <section class="group">
+      <h2>動き</h2>
+      <label class="switch"><input type="checkbox" id="followMouse" checked><span>マウスの方を見る</span></label>
+      <label class="switch"><input type="checkbox" id="autoBlink" checked><span>自動まばたき</span></label>
+      <label class="switch"><input type="checkbox" id="idleMotion" checked><span>呼吸・ゆらぎ</span></label>
+      <div class="row">
+        <button id="camBtn" class="btn" type="button" aria-pressed="false">Webカメラで追跡 <small>実験的</small></button>
+        <button id="camCalib" class="btn ghost" type="button" hidden>正面をリセット</button>
+      </div>
+      <label class="switch" id="camMirrorWrap" hidden><input type="checkbox" id="camMirror" checked><span>カメラの左右を反転</span></label>
+      <p class="note" id="camStatus" aria-live="polite"></p>
+    </section>
+
+    <section class="group">
+      <h2>カラー</h2>
+      <div class="colors">
+        <label for="cFur"><input type="color" id="cFur"><span>毛</span></label>
+        <label for="cFurL"><input type="color" id="cFurL"><span>明るい毛</span></label>
+        <label for="cIris"><input type="color" id="cIris"><span>瞳</span></label>
+        <label for="cTank"><input type="color" id="cTank"><span>タンクトップ</span></label>
+      </div>
+      <button id="resetColors" class="btn ghost" type="button">色を元に戻す</button>
+    </section>
+
+    <section class="group">
+      <h2>背景</h2>
+      <div class="seg" id="bgSeg" role="group" aria-label="背景"></div>
+    </section>
+
+    <section class="group">
+      <h2>書き出し</h2>
+      <div class="row">
+        <button id="savePng" class="btn" type="button">PNG を保存</button>
+        <button id="savePngtuber" class="btn" type="button">PNGTuber 用 4枚</button>
+      </div>
+      <p class="note">背景透過の 1024px PNG。4枚セットは「目の開閉 × 口の開閉」で、veadotube mini などにそのまま使えます。</p>
+    </section>
+
+    <footer class="keys">
+      <button id="hideUi" class="btn ghost" type="button">パネルを隠す <kbd>H</kbd></button>
+      <p><kbd>Space</kbd> 口を開く　<kbd>B</kbd> まばたき</p>
+    </footer>
+  </aside>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/character.js"></script>
+<script src="js/tracking.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
