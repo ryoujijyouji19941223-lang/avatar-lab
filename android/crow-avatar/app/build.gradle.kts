@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.totomarujapan.crowavatar"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.totomarujapan.crowavatar"
