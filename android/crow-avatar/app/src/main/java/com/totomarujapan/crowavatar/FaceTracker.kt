@@ -6,128 +6,74 @@ import android.graphics.Matrix
 import android.os.SystemClock
 import androidx.camera.core.ImageProxy
 import com.google.mediapipe.framework.image.BitmapImageBuilder
-import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarker
-import com.google.mediapipe.tasks.vision.facelandmarker.FaceLandmarkerResult
-import kotlin.math.atan2
-import kotlin.math.max
+import kotlin.math.*
 
-data class FacePose(
-    val yaw: Float,
-    val pitch: Float,
-    val roll: Float,
-    val jaw: Float,
-    val blinkLeft: Float,
-    val blinkRight: Float
-)
-
-class FaceTracker(
-    context: Context,
-    private val onPose: (FacePose) -> Unit,
-    private val onError: (String) -> Unit
-) : AutoCloseable {
-
-    private val landmarker: FaceLandmarker
-
-    init {
-        val base = BaseOptions.builder()
-            .setModelAssetPath("face_landmarker.task")
-            .build()
-
-        val options = FaceLandmarker.FaceLandmarkerOptions.builder()
-            .setBaseOptions(base)
-            .setRunningMode(RunningMode.LIVE_STREAM)
-            .setNumFaces(1)
-            .setMinFaceDetectionConfidence(0.5f)
-            .setMinFacePresenceConfidence(0.5f)
-            .setMinTrackingConfidence(0.5f)
-            .setOutputFaceBlendshapes(true)
-            .setResultListener(this::onResult)
-            .setErrorListener { error -> onError(error.message ?: error.toString()) }
-            .build()
-
-        landmarker = FaceLandmarker.createFromOptions(context, options)
+/** Column-major canonical face rotation supplied by MediaPipe, not landmark ratios. */
+object FaceRotation {
+    fun radians(m: FloatArray): FloatArray {
+        require(m.size == 16)
+        val scale = sqrt(m[0]*m[0] + m[1]*m[1] + m[2]*m[2]).coerceAtLeast(0.0001f)
+        return floatArrayOf(asin((-m[2]/scale).coerceIn(-1f, 1f)), atan2(m[6], m[10]), atan2(m[1], m[0]))
     }
+}
+class FaceTracker(context: Context, private val onPose: (FacePose?) -> Unit) : AutoCloseable {
+    private val landmarker = FaceLandmarker.createFromOptions(context,
+        FaceLandmarker.FaceLandmarkerOptions.builder()
+            .setBaseOptions(BaseOptions.builder().setModelAssetPath("face_landmarker.task").build())
+            // Serial video inference bounds memory: every MPImage is closed before the next frame.
+            .setRunningMode(RunningMode.VIDEO).setNumFaces(1)
+            .setMinFaceDetectionConfidence(0.5f).setMinFacePresenceConfidence(0.5f)
+            .setMinTrackingConfidence(0.5f).setOutputFaceBlendshapes(true)
+            .setOutputFacialTransformationMatrixes(true).build())
+    private var closed = false
+    private var lastTimestamp = -1L
+    private var centre: FloatArray? = null
+    @Volatile private var recenterRequested = false
+    fun recenter() { recenterRequested = true }
 
-    fun detect(imageProxy: ImageProxy) {
-        val timestamp = SystemClock.uptimeMillis()
-        val rotation = imageProxy.imageInfo.rotationDegrees
-        val width = imageProxy.width
-        val height = imageProxy.height
-
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    @Synchronized fun detect(proxy: ImageProxy) {
+        var bitmap: Bitmap? = null
+        var rotated: Bitmap? = null
         try {
-            bitmap.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+            val timestamp = SystemClock.uptimeMillis()
+            if (closed || timestamp - lastTimestamp < 40L) return
+            lastTimestamp = timestamp
+            val rotation = proxy.imageInfo.rotationDegrees
+            // Copy full padded rows, then crop padding. Do not assume rowStride == width*4.
+            val plane = proxy.planes[0]
+            require(plane.pixelStride == 4)
+            val paddedWidth = plane.rowStride / plane.pixelStride
+            bitmap = Bitmap.createBitmap(paddedWidth, proxy.height, Bitmap.Config.ARGB_8888)
+            val buffer = plane.buffer.duplicate().apply { rewind() }
+            // Some devices omit trailing padding on the last row.
+            val packed = java.nio.ByteBuffer.allocate(plane.rowStride * proxy.height)
+            packed.put(buffer); packed.rewind(); bitmap.copyPixelsFromBuffer(packed)
+            val transform = Matrix().apply { postRotate(rotation.toFloat()) }
+            // No horizontal mirroring: eyeBlinkLeft/Right remain anatomical sides.
+            rotated = Bitmap.createBitmap(bitmap, 0, 0, proxy.width, proxy.height, transform, true)
+            BitmapImageBuilder(rotated).build().use { input ->
+                val result = landmarker.detectForVideo(input, timestamp)
+                val m = result.facialTransformationMatrixes().orElse(emptyList()).firstOrNull()
+                if (m == null || result.faceLandmarks().isEmpty()) { onPose(null); return }
+                val angles = FaceRotation.radians(m)
+                if (centre == null || recenterRequested) { centre = angles.copyOf(); recenterRequested = false }
+                val c = requireNotNull(centre)
+                val blends = result.faceBlendshapes().orElse(emptyList()).firstOrNull().orEmpty()
+                fun score(name: String) = blends.firstOrNull { it.categoryName() == name }?.score() ?: 0f
+                onPose(FacePose(
+                    ((angles[0]-c[0]) / 0.60f).coerceIn(-1f,1f),
+                    ((angles[1]-c[1]) / 0.45f).coerceIn(-1f,1f),
+                    ((angles[2]-c[2]) / 0.40f).coerceIn(-1f,1f),
+                    score("jawOpen"), score("eyeBlinkLeft"), score("eyeBlinkRight")))
+            }
         } finally {
-            imageProxy.close()
+            proxy.close()
+            if (rotated !== bitmap) rotated?.recycle()
+            bitmap?.recycle()
         }
-
-        val transform = Matrix().apply {
-            postRotate(rotation.toFloat())
-            postScale(-1f, 1f, width / 2f, height / 2f)
-        }
-
-        val rotated = Bitmap.createBitmap(
-            bitmap, 0, 0, bitmap.width, bitmap.height, transform, true
-        )
-        if (rotated !== bitmap) bitmap.recycle()
-
-        val mpImage = BitmapImageBuilder(rotated).build()
-        landmarker.detectAsync(mpImage, timestamp)
     }
-
-    private fun onResult(
-        result: FaceLandmarkerResult,
-        @Suppress("UNUSED_PARAMETER") input: MPImage
-    ) {
-        val face = result.faceLandmarks().firstOrNull() ?: return
-
-        fun x(i: Int) = face[i].x()
-        fun y(i: Int) = face[i].y()
-
-        val noseX = x(1)
-        val noseY = y(1)
-        val chinY = y(152)
-        val leftFaceX = x(234)
-        val rightFaceX = x(454)
-        val leftEyeX = x(33)
-        val leftEyeY = y(33)
-        val rightEyeX = x(263)
-        val rightEyeY = y(263)
-
-        val faceWidth = max(0.001f, kotlin.math.abs(rightFaceX - leftFaceX))
-        val faceMidX = (leftFaceX + rightFaceX) * 0.5f
-        val eyeMidY = (leftEyeY + rightEyeY) * 0.5f
-        val eyeToChin = max(0.001f, chinY - eyeMidY)
-
-        val yaw = ((faceMidX - noseX) / faceWidth * 4.8f).coerceIn(-1f, 1f)
-        val noseRatio = (noseY - eyeMidY) / eyeToChin
-        val pitch = ((noseRatio - 0.43f) * 4.5f).coerceIn(-1f, 1f)
-        val roll = (
-            atan2(
-                (rightEyeY - leftEyeY).toDouble(),
-                (rightEyeX - leftEyeX).toDouble()
-            ).toFloat() * 1.75f
-        ).coerceIn(-0.8f, 0.8f)
-
-        val blend = result.faceBlendshapes()
-            .orElse(emptyList())
-            .firstOrNull()
-            .orEmpty()
-
-        fun score(name: String): Float =
-            blend.firstOrNull { it.categoryName() == name }?.score() ?: 0f
-
-        val jaw = (score("jawOpen") * 1.35f).coerceIn(0f, 1f)
-        val blinkLeft = (score("eyeBlinkLeft") * 1.25f).coerceIn(0f, 1f)
-        val blinkRight = (score("eyeBlinkRight") * 1.25f).coerceIn(0f, 1f)
-
-        onPose(FacePose(yaw, pitch, roll, jaw, blinkLeft, blinkRight))
-    }
-
-    override fun close() {
-        landmarker.close()
-    }
+    @Synchronized override fun close() { if (!closed) { closed = true; landmarker.close() } }
 }

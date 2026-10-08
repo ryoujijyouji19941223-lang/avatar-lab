@@ -1,223 +1,114 @@
 package com.totomarujapan.crowavatar
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.Color
+import android.graphics.*
+import android.os.SystemClock
 import android.view.View
-import kotlin.math.sin
+import kotlin.math.*
 
-class AvatarView(context: Context) : View(context) {
-    private val assets = AvatarAssets.load(context)
+data class FacePose(val yaw: Float = 0f, val pitch: Float = 0f, val roll: Float = 0f,
+    val jaw: Float = 0f, val blinkLeft: Float = 0f, val blinkRight: Float = 0f)
+object RigMotion {
+    fun closure(score: Float): Float {
+        val x = ((score - 0.08f) / 0.64f).coerceIn(0f, 1f)
+        return x * x * (3f - 2f * x)
+    }
+    fun opening(score: Float) = ((score - 0.05f) / 0.70f).coerceIn(0f, 1f)
+    fun smooth(old: Float, target: Float, dt: Float, tau: Float): Float =
+        old + (target - old) * (1f - exp(-dt / tau))
+}
+class CrowRenderer(private val layers: AvatarLayers) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val camera = android.graphics.Camera()
+    private val mouthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(19, 10, 22) }
+    private val lipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(33, 29, 39); style = Paint.Style.STROKE; strokeWidth = 1f; strokeCap = Paint.Cap.ROUND
+    }
+    private val camera = Camera()
     private val matrix = Matrix()
-    private val lidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(40, 39, 49); style = Paint.Style.FILL }
-    private val lashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(12, 12, 17); style = Paint.Style.STROKE; strokeWidth = 2.2f }
-
-    private var targetYaw = 0f
-    private var targetPitch = 0f
-    private var targetRoll = 0f
-    private var targetJaw = 0f
-    private var targetBlinkLeft = 0f
-    private var targetBlinkRight = 0f
-
-    private var yaw = 0f
-    private var pitch = 0f
-    private var roll = 0f
-    private var jaw = 0f
-    private var blinkLeft = 0f
-    private var blinkRight = 0f
-
-    private val startedAt = System.nanoTime()
-
-    fun updateFace(
-        yaw: Float,
-        pitch: Float,
-        roll: Float,
-        jaw: Float,
-        blinkLeft: Float,
-        blinkRight: Float
-    ) {
-        targetYaw = yaw.coerceIn(-1f, 1f)
-        targetPitch = pitch.coerceIn(-1f, 1f)
-        targetRoll = roll.coerceIn(-1f, 1f)
-        targetJaw = jaw.coerceIn(0f, 1f)
-        targetBlinkLeft = blinkLeft.coerceIn(0f, 1f)
-        targetBlinkRight = blinkRight.coerceIn(0f, 1f)
-        postInvalidateOnAnimation()
+    private val restInverse = beakProjection(0f).apply { invert(this) }
+    /** Local 480px space; the composed moving head is not cropped again. */
+    fun draw(canvas: Canvas, pose: FacePose, seconds: Double) {
+        canvas.save()
+        canvas.scale(1f, 1f + sin(seconds * 1.45).toFloat() * 0.003f, 240f, 480f)
+        canvas.drawBitmap(layers.body, 0f, 0f, paint); canvas.restore()
+        canvas.save()
+        camera.save()
+        camera.rotateY(pose.yaw.coerceIn(-1f, 1f) * 17f) // 13 -> 17 degrees (1.31x)
+        camera.rotateX(-pose.pitch.coerceIn(-1f, 1f) * 10.1f) // 8.4 -> 10.1 degrees (1.20x)
+        camera.getMatrix(matrix); camera.restore()
+        matrix.preTranslate(-251f, -317f)
+        matrix.postTranslate(251f + pose.yaw * 5f, 317f + pose.pitch * 3f)
+        canvas.concat(matrix)
+        canvas.rotate(pose.roll.coerceIn(-1f, 1f) * 8.6f, 251f, 317f)
+        canvas.drawBitmap(layers.head, 0f, 0f, paint)
+        drawEye(canvas, layers.leftEye, RigMotion.closure(pose.blinkLeft))
+        drawEye(canvas, layers.rightEye, RigMotion.closure(pose.blinkRight))
+        drawMouth(canvas, RigMotion.opening(pose.jaw)); canvas.restore()
     }
-
-    fun setTracking(enabled: Boolean) {
-        if (!enabled) {
-            targetYaw = 0f
-            targetPitch = 0f
-            targetRoll = 0f
-            targetJaw = 0f
-            targetBlinkLeft = 0f
-            targetBlinkRight = 0f
+    private fun drawEye(canvas: Canvas, eye: EyeLayers, closure: Float) {
+        val contour = eye.contour
+        // Both opaque lids are the backing; only the remaining aperture reveals the eyeball.
+        canvas.drawBitmap(eye.upperLid, 0f, 0f, paint); canvas.drawBitmap(eye.lowerLid, 0f, 0f, paint)
+        val upper = contour.curve(contour.top, closure)
+        val lower = contour.curve(contour.bottom, closure)
+        if (closure < 0.999f) {
+            canvas.save(); canvas.clipPath(contour.area(upper, lower))
+            canvas.drawBitmap(eye.eyeball, 0f, 0f, paint); canvas.restore()
         }
-        postInvalidateOnAnimation()
+        if (closure > 0.02f) {
+            lipPaint.alpha = (255 * closure).toInt()
+            canvas.drawPath(contour.line(upper), lipPaint); lipPaint.alpha = 255
+        }
     }
-
+    /** Actual X-axis hinge rotation, normalized to an identity transform at rest.
+     * No asymmetric translation or Z rotation: mouth centre stays at x=251.
+     */
+    internal fun beakProjection(opening: Float): Matrix {
+        val c = Camera(); val m = Matrix()
+        c.save(); c.rotateX(42f - opening * 30f); c.getMatrix(m); c.restore()
+        m.preTranslate(-RigGeometry.HINGE_X, -RigGeometry.HINGE_Y)
+        m.postTranslate(RigGeometry.HINGE_X, RigGeometry.HINGE_Y + opening * 2f)
+        return m
+    }
+    internal fun beakTransform(opening: Float) = Matrix().apply { setConcat(beakProjection(opening), restInverse) }
+    private fun drawMouth(canvas: Canvas, opening: Float) {
+        val beak = beakTransform(opening)
+        val tip = floatArrayOf(251f, 315f); beak.mapPoints(tip)
+        val inside = Path().apply {
+            moveTo(199f, 242f); quadTo(251f, 272f, 302f, 242f)
+            quadTo(286f, tip[1] - 16f, 251f, tip[1] + 2f)
+            quadTo(221f, tip[1] - 15f, 199f, 242f); close()
+        }
+        canvas.drawPath(inside, mouthPaint) // deepest mouth layer
+        canvas.save(); canvas.concat(beak); canvas.drawBitmap(layers.lowerBeak, 0f, 0f, paint); canvas.restore()
+        canvas.drawBitmap(layers.upperBeak, 0f, 0f, paint) // fixed, frontmost; never receives jaw
+    }
+}
+class AvatarView(context: Context) : View(context) {
+    private val renderer = CrowRenderer(AvatarAssets.load(context))
+    private var target = FacePose(); private var current = FacePose()
+    private var tracking = false; private var lastInput = 0L; private var lastFrame = 0L
+    private val startedAt = SystemClock.uptimeMillis()
+    fun updateFace(pose: FacePose) { target = pose; lastInput = SystemClock.uptimeMillis() }
+    fun setTracking(enabled: Boolean) { tracking = enabled; if (!enabled) target = FacePose() }
+    fun preview(pose: FacePose) { tracking = false; target = pose }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
-        val k = 0.22f
-        yaw += (targetYaw - yaw) * k
-        pitch += (targetPitch - pitch) * k
-        roll += (targetRoll - roll) * k
-        jaw += (targetJaw - jaw) * k
-        blinkLeft += (targetBlinkLeft - blinkLeft) * k
-        blinkRight += (targetBlinkRight - blinkRight) * k
-
-        val w = width.toFloat()
-        val h = height.toFloat()
-        if (w <= 0f || h <= 0f) return
-
-        val drawSize = minOf(w * 1.06f, h * 0.77f)
-        val left = (w - drawSize) / 2f
-        val top = h * 0.08f
-        val dst = RectF(left, top, left + drawSize, top + drawSize)
-        val cx = dst.centerX()
-        val headPivotY = dst.top + dst.height() * 0.46f
-
-        val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
-        val breathe = 1f + (sin(seconds * 1.45).toFloat() * 0.0045f)
-
-        // BODY: shoulder / jacket / chest only. No camera-driven movement.
-        canvas.save()
-        val bodyTop = dst.top + dst.height() * 0.655f
-        canvas.clipRect(0f, bodyTop, w, h)
-        canvas.scale(1.0015f, breathe, cx, dst.bottom)
-        canvas.drawBitmap(assets.neutral, null, dst, paint)
-        canvas.restore()
-
-        // HEAD GROUP: user-defined face/head area only. Shoulders are excluded by the path.
-        canvas.save()
-
-        matrix.reset()
-        camera.save()
-        camera.rotateY(yaw * 13.0f)
-        camera.rotateX(-pitch * 8.4f)
-        camera.getMatrix(matrix)
-        camera.restore()
-
-        matrix.preTranslate(-cx, -headPivotY)
-        matrix.postTranslate(
-            cx + yaw * w * 0.0115f,
-            headPivotY + pitch * h * 0.010f
-        )
-        canvas.concat(matrix)
-        canvas.rotate(roll * 8.2f, cx, headPivotY)
-
-        val headPath = buildHeadPath(dst)
-        canvas.clipPath(headPath)
-
-        // Neutral head is the stable base.
-        canvas.drawBitmap(assets.neutral, null, dst, paint)
-
-        // A complete blink must cover the original iris, not merely paste a half-lidded eye.
-        // Coordinates are defined in the original neutral portrait reference system.
-        if (blinkLeft > 0.36f) {
-            drawClosedEye(canvas, dst, 0.378f, 0.411f, 0.180f, blinkLeft)
-        }
-        if (blinkRight > 0.36f) {
-            drawClosedEye(canvas, dst, 0.641f, 0.411f, 0.183f, blinkRight)
-        }
-
-        // Keep hair, eyes and head contour in the neutral layer.
-        // Only a confined inner-mouth patch is replaced; the beak's top stays put.
-        if (jaw > 0.16f) {
-            canvas.save()
-            val opening = (jaw - 0.16f).coerceIn(0f, 0.84f) / 0.84f
-            // The face center is 0.50, not the old shifted source center (about 0.517).
-            // Crop to the V-shaped lower-beak interior, protecting both cheeks.
-            val mouth = Path().apply {
-                moveTo(dst.left + dst.width() * 0.419f, dst.top + dst.height() * 0.535f)
-                quadTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * 0.560f,
-                       dst.left + dst.width() * 0.586f, dst.top + dst.height() * 0.535f)
-                lineTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * (0.640f + opening * 0.016f))
-                close()
-            }
-            canvas.clipPath(mouth)
-            // Small optical correction to the imported talk frame.
-            canvas.translate(-dst.width() * 0.012f, 0f)
-            canvas.drawBitmap(assets.talk, null, dst, paint)
-            canvas.restore()
-        }
-
-        canvas.restore()
-        postInvalidateOnAnimation()
+        val now = SystemClock.uptimeMillis()
+        val dt = if (lastFrame == 0L) 1f / 60f else ((now - lastFrame) / 1000f).coerceIn(0.001f, 0.1f)
+        lastFrame = now
+        if (tracking && now - lastInput > 550L) target = FacePose()
+        fun h(a: Float, b: Float) = RigMotion.smooth(a, b, dt, 0.070f)
+        fun e(a: Float, b: Float) = RigMotion.smooth(a, b, dt, if (b > a) 0.018f else 0.045f)
+        current = FacePose(h(current.yaw, target.yaw), h(current.pitch, target.pitch), h(current.roll, target.roll),
+            h(current.jaw, target.jaw), e(current.blinkLeft, target.blinkLeft), e(current.blinkRight, target.blinkRight))
+        val size = minOf(width * 1.02f, height * 0.77f)
+        canvas.save(); canvas.translate((width - size) / 2f, height * 0.075f); canvas.scale(size / 480f, size / 480f)
+        renderer.draw(canvas, current, (now - startedAt) / 1000.0); canvas.restore()
+        if (isShown && windowVisibility == VISIBLE) postInvalidateOnAnimation()
     }
-
-    private fun drawClosedEye(
-        canvas: Canvas,
-        dst: RectF,
-        centerX: Float,
-        centerY: Float,
-        widthFraction: Float,
-        intensity: Float
-    ) {
-        // The generated blink art still had exposed pupils. Cover the entire eye opening
-        // with a feather-toned lid, then draw the dark curved lash line.
-        val x = dst.left + dst.width() * centerX
-        val y = dst.top + dst.height() * centerY
-        val halfW = dst.width() * widthFraction * 0.5f
-        val eyeHeight = dst.height() * 0.047f
-        val openness = if (intensity > 0.57f) 1f else (intensity / 0.57f)
-        canvas.save()
-        val cover = Path().apply {
-            moveTo(x - halfW * 1.11f, y + eyeHeight * 0.34f)
-            quadTo(x, y - eyeHeight * 1.1f, x + halfW * 1.1f, y + eyeHeight * 0.28f)
-            quadTo(x, y + eyeHeight * 0.92f, x - halfW * 1.11f, y + eyeHeight * 0.34f)
-            close()
-        }
-        lidPaint.alpha = (255f * openness).toInt().coerceIn(0, 255)
-        canvas.drawPath(cover, lidPaint)
-        val lash = Path().apply {
-            moveTo(x - halfW * 1.1f, y + eyeHeight * 0.26f)
-            quadTo(x, y + eyeHeight * 0.65f, x + halfW * 1.1f, y + eyeHeight * 0.26f)
-        }
-        lashPaint.strokeWidth = dst.width() * 0.009f
-        lashPaint.alpha = lidPaint.alpha
-        canvas.drawPath(lash, lashPaint)
-        canvas.restore()
-    }
-
-    private fun region(
-        dst: RectF,
-        x0: Float,
-        y0: Float,
-        x1: Float,
-        y1: Float
-    ): RectF = RectF(
-        dst.left + dst.width() * x0,
-        dst.top + dst.height() * y0,
-        dst.left + dst.width() * x1,
-        dst.top + dst.height() * y1
-    )
-
-    private fun buildHeadPath(dst: RectF): Path {
-        fun x(v: Float) = dst.left + dst.width() * v
-        fun y(v: Float) = dst.top + dst.height() * v
-
-        // Approximation of the user's outlined movable area:
-        // hair + face + small neck ruff, explicitly excluding both shoulders.
-        return Path().apply {
-            moveTo(x(0.50f), y(0.015f))
-            cubicTo(x(0.30f), y(0.015f), x(0.13f), y(0.08f), x(0.085f), y(0.24f))
-            cubicTo(x(0.045f), y(0.38f), x(0.11f), y(0.54f), x(0.245f), y(0.595f))
-            cubicTo(x(0.30f), y(0.62f), x(0.34f), y(0.61f), x(0.39f), y(0.64f))
-            cubicTo(x(0.43f), y(0.67f), x(0.47f), y(0.685f), x(0.50f), y(0.69f))
-            cubicTo(x(0.54f), y(0.685f), x(0.58f), y(0.665f), x(0.62f), y(0.635f))
-            cubicTo(x(0.67f), y(0.605f), x(0.71f), y(0.615f), x(0.76f), y(0.59f))
-            cubicTo(x(0.90f), y(0.52f), x(0.965f), y(0.36f), x(0.915f), y(0.22f))
-            cubicTo(x(0.86f), y(0.075f), x(0.70f), y(0.015f), x(0.50f), y(0.015f))
-            close()
-        }
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility == VISIBLE) { lastFrame = 0L; postInvalidateOnAnimation() }
     }
 }
