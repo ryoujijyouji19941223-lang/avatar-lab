@@ -115,7 +115,10 @@ class MainActivity : ComponentActivity() {
                     }
                 } }
                 runOnUiThread {
-                    if (generation != token || isDestroyed) { cameraExecutor.execute { created.close() }; return@runOnUiThread }
+                    if (generation != token || isDestroyed) {
+                        if (cameraExecutor.isShutdown) created.close() else cameraExecutor.execute { created.close() }
+                        return@runOnUiThread
+                    }
                     tracker = created
                     val future = ProcessCameraProvider.getInstance(this)
                     future.addListener({

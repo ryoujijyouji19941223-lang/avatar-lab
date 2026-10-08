@@ -38,7 +38,7 @@ class CrowRigTest {
         val left=render(FacePose(blinkLeft=1f))
         val right=render(FacePose(blinkRight=1f))
         val both=render(FacePose(blinkLeft=1f,blinkRight=1f))
-        val l=Rect(280,179,331,216); val r=Rect(168,181,219,217)
+        val l=Rect(277,176,339,221); val r=Rect(164,176,222,221)
         assertTrue(bright(base,l)>50); assertTrue(bright(base,r)>50)
         same(base,left,r); same(base,right,l)
         assertEquals("left iris/white leak",0,bright(left,l))
@@ -88,11 +88,10 @@ class CrowRigTest {
             render(FacePose(sin(t).toFloat(),cos(t).toFloat(),sin(t*0.3).toFloat(),
                 (sin(t)+1).toFloat()/2f,if(frame%60<5) 1f else 0f,if(frame%71<5) 1f else 0f),t).recycle()
         }
-        layers.head.useBitmapCopy { b -> File(directory,"layer-head.png").outputStream().use { b.compress(Bitmap.CompressFormat.PNG,100,it) } }
+        File(directory,"layer-head.png").outputStream().use { layers.head.compress(Bitmap.CompressFormat.PNG,100,it) }
         File(directory,"layer-body.png").outputStream().use { layers.body.compress(Bitmap.CompressFormat.PNG,100,it) }
     }
     private fun Bitmap.useBitmap(block:(Bitmap)->Unit) { try { block(this) } finally { recycle() } }
-    private fun Bitmap.useBitmapCopy(block:(Bitmap)->Unit) { block(this) }
     @Test fun columnMajorRotationAndBlendMapping() {
         val identity=floatArrayOf(1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,0f,0f,0f,1f)
         assertArrayEquals(floatArrayOf(0f,0f,0f),FaceRotation.radians(identity),0.001f)

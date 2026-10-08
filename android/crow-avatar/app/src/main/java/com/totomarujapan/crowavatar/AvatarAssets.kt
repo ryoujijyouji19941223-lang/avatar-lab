@@ -31,18 +31,18 @@ object RigGeometry {
     }
     // Anatomical LEFT is on the viewer's right. Camera input is not mirrored.
     val leftEye = EyeContour(
-        floatArrayOf(282f, 208f, 286f, 192f, 306f, 178f, 327f, 184f),
-        floatArrayOf(282f, 208f, 300f, 214f, 322f, 210f, 327f, 184f),
-        floatArrayOf(282f, 208f, 300f, 208f, 316f, 201f, 327f, 184f),
+        floatArrayOf(278f, 214f, 285f, 183f, 311f, 169f, 337f, 178f),
+        floatArrayOf(278f, 214f, 306f, 218f, 330f, 211f, 337f, 178f),
+        floatArrayOf(278f, 214f, 302f, 218f, 326f, 211f, 337f, 178f),
         Rect(282, 220, 325, 238))
     val rightEye = EyeContour(
-        floatArrayOf(172f, 186f, 187f, 179f, 204f, 185f, 216f, 207f),
-        floatArrayOf(172f, 186f, 178f, 216f, 203f, 212f, 216f, 207f),
-        floatArrayOf(172f, 186f, 182f, 202f, 204f, 209f, 216f, 207f),
+        floatArrayOf(165f, 179f, 183f, 170f, 208f, 176f, 220f, 215f),
+        floatArrayOf(165f, 179f, 173f, 214f, 201f, 219f, 220f, 215f),
+        floatArrayOf(165f, 179f, 175f, 211f, 199f, 219f, 220f, 215f),
         Rect(174, 220, 217, 238))
 }
 class EyeContour(val top: FloatArray, val bottom: FloatArray, val seam: FloatArray, val texture: Rect) {
-    val bounds = RectF(minOf(top[0], top[6]) - 2f, 178f, maxOf(top[0], top[6]) + 2f, 216f)
+    val bounds = RectF(minOf(top[0], top[6]) - 2f, 169f, maxOf(top[0], top[6]) + 2f, 221f)
     fun curve(from: FloatArray, closure: Float) = FloatArray(8) { i -> from[i] + (seam[i] - from[i]) * closure }
     fun area(a: FloatArray, b: FloatArray) = Path().apply {
         moveTo(a[0], a[1]); cubicTo(a[2], a[3], a[4], a[5], a[6], a[7])
@@ -77,6 +77,7 @@ object AvatarAssets {
             c.clipRect(0f, 310f, 480f, 480f)
             // Feather backing under the overlapping head/neck prevents a transparent slit.
             c.drawBitmap(source, Rect(183, 365, 318, 424), RectF(168f, 306f, 333f, 382f), paint)
+            c.clipOutPath(RigGeometry.head())
             c.drawBitmap(source, 0f, 0f, paint)
         }
         val head = layer(RigGeometry.head())
