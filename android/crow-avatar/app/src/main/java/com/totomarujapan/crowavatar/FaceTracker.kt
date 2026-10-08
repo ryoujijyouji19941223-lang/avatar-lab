@@ -19,7 +19,8 @@ data class FacePose(
     val pitch: Float,
     val roll: Float,
     val jaw: Float,
-    val blink: Float
+    val blinkLeft: Float,
+    val blinkRight: Float
 )
 
 class FaceTracker(
@@ -120,11 +121,10 @@ class FaceTracker(
             blend.firstOrNull { it.categoryName() == name }?.score() ?: 0f
 
         val jaw = (score("jawOpen") * 1.35f).coerceIn(0f, 1f)
-        val blink = (
-            max(score("eyeBlinkLeft"), score("eyeBlinkRight")) * 1.25f
-        ).coerceIn(0f, 1f)
+        val blinkLeft = (score("eyeBlinkLeft") * 1.25f).coerceIn(0f, 1f)
+        val blinkRight = (score("eyeBlinkRight") * 1.25f).coerceIn(0f, 1f)
 
-        onPose(FacePose(yaw, pitch, roll, jaw, blink))
+        onPose(FacePose(yaw, pitch, roll, jaw, blinkLeft, blinkRight))
     }
 
     override fun close() {
