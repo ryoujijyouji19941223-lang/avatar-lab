@@ -4,7 +4,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="Crow Avatar"
+        android:label="Crow Avatar Chat"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
