@@ -189,63 +189,82 @@ class AvatarView(context: Context) : View(context) {
     }
 
     private fun drawBlink(canvas: Canvas, dst: RectF, isLeft: Boolean, amount: Float) {
-        val p = smooth01(((amount - 0.10f) / 0.82f).coerceIn(0f, 1f))
+        // Face Landmarker often peaks around 0.5–0.7 on a real full blink.
+        // Map that range aggressively so a real closed eye actually reaches 100% closure.
+        val p = smooth01(((amount - 0.07f) / 0.52f).coerceIn(0f, 1f))
         if (p <= 0.001f) return
 
         val eyePath = buildEyePath(dst, isLeft)
-        val centerY = y(dst, 0.407f)
-        val eyeH = dst.height() * 0.105f
-        val upperShift = -eyeH * 0.38f * (1f - p)
-        val lowerShift = eyeH * 0.18f * (1f - p)
+        val bounds = eyeBounds(dst, isLeft)
+        val seamY = bounds.top + bounds.height() * 0.57f
 
-        // Fade in early, but geometry does most of the closing.
-        layerPaint.alpha = (255f * (p * 1.35f).coerceAtMost(1f)).toInt()
-
-        // Upper lid moves downward.
-        canvas.save()
-        canvas.clipPath(eyePath)
-        canvas.clipRect(0f, 0f, width.toFloat(), centerY + eyeH * 0.055f)
-        canvas.translate(0f, upperShift)
-        canvas.drawBitmap(assets.blink, null, dst, layerPaint)
-        canvas.restore()
-
-        // Lower lid moves upward a smaller amount.
-        canvas.save()
-        canvas.clipPath(eyePath)
-        canvas.clipRect(0f, centerY - eyeH * 0.055f, width.toFloat(), height.toFloat())
-        canvas.translate(0f, lowerShift)
-        canvas.drawBitmap(assets.blink, null, dst, layerPaint)
-        canvas.restore()
-
-        // At the end of the blink, stamp the original aligned closed eye once.
-        // This guarantees no iris/white remains visible and avoids a seam between halves.
-        if (p > 0.90f) {
-            layerPaint.alpha = (((p - 0.90f) / 0.10f) * 255f).toInt().coerceIn(0, 255)
+        // IMPORTANT:
+        // The neutral eye remains underneath, but the lid texture is OPAQUE and progressively
+        // covers the *entire* eye socket. We do not draw a new black bar or a different eye.
+        //
+        // Upper lid: reveal the already-aligned blink texture from the top down.
+        val upperBottom = bounds.top + (seamY - bounds.top) * p
+        if (upperBottom > bounds.top) {
             canvas.save()
             canvas.clipPath(eyePath)
+            canvas.clipRect(bounds.left, bounds.top, bounds.right, upperBottom)
+            layerPaint.alpha = 255
             canvas.drawBitmap(assets.blink, null, dst, layerPaint)
             canvas.restore()
         }
 
-        layerPaint.alpha = 255
+        // Lower lid: reveal the aligned blink texture from the bottom up.
+        val lowerTop = bounds.bottom - (bounds.bottom - seamY) * p
+        if (lowerTop < bounds.bottom) {
+            canvas.save()
+            canvas.clipPath(eyePath)
+            canvas.clipRect(bounds.left, lowerTop, bounds.right, bounds.bottom)
+            layerPaint.alpha = 255
+            canvas.drawBitmap(assets.blink, null, dst, layerPaint)
+            canvas.restore()
+        }
+
+        // Once the tracker says "closed", stamp the exact closed-eye atlas region once.
+        // This is the missing inner-lid/occlusion step: no sclera or iris can leak through.
+        if (p >= 0.88f) {
+            canvas.save()
+            canvas.clipPath(eyePath)
+            layerPaint.alpha = 255
+            canvas.drawBitmap(assets.blink, null, dst, layerPaint)
+            canvas.restore()
+        }
     }
 
+    private fun eyeBounds(dst: RectF, isLeft: Boolean): RectF =
+        if (isLeft) {
+            RectF(
+                x(dst, 0.278f), y(dst, 0.338f),
+                x(dst, 0.476f), y(dst, 0.472f)
+            )
+        } else {
+            RectF(
+                x(dst, 0.558f), y(dst, 0.338f),
+                x(dst, 0.752f), y(dst, 0.472f)
+            )
+        }
+
     private fun buildEyePath(dst: RectF, isLeft: Boolean): Path {
-        // Matches the existing anime eye sockets instead of inventing a rectangular/black lid.
+        // These paths follow the original neutral eye sockets and are deliberately a few
+        // pixels wider than the visible white/iris so the lid can completely occlude them.
         return if (isLeft) {
             Path().apply {
-                moveTo(x(dst, 0.303f), y(dst, 0.363f))
-                cubicTo(x(dst, 0.340f), y(dst, 0.347f), x(dst, 0.420f), y(dst, 0.350f), x(dst, 0.458f), y(dst, 0.386f))
-                cubicTo(x(dst, 0.466f), y(dst, 0.416f), x(dst, 0.448f), y(dst, 0.451f), x(dst, 0.399f), y(dst, 0.458f))
-                cubicTo(x(dst, 0.346f), y(dst, 0.459f), x(dst, 0.307f), y(dst, 0.438f), x(dst, 0.296f), y(dst, 0.404f))
+                moveTo(x(dst, 0.286f), y(dst, 0.382f))
+                cubicTo(x(dst, 0.315f), y(dst, 0.338f), x(dst, 0.405f), y(dst, 0.337f), x(dst, 0.468f), y(dst, 0.382f))
+                cubicTo(x(dst, 0.472f), y(dst, 0.416f), x(dst, 0.446f), y(dst, 0.459f), x(dst, 0.392f), y(dst, 0.468f))
+                cubicTo(x(dst, 0.337f), y(dst, 0.466f), x(dst, 0.296f), y(dst, 0.439f), x(dst, 0.286f), y(dst, 0.382f))
                 close()
             }
         } else {
             Path().apply {
-                moveTo(x(dst, 0.570f), y(dst, 0.386f))
-                cubicTo(x(dst, 0.610f), y(dst, 0.350f), x(dst, 0.690f), y(dst, 0.347f), x(dst, 0.727f), y(dst, 0.363f))
-                cubicTo(x(dst, 0.735f), y(dst, 0.402f), x(dst, 0.723f), y(dst, 0.438f), x(dst, 0.674f), y(dst, 0.458f))
-                cubicTo(x(dst, 0.625f), y(dst, 0.451f), x(dst, 0.578f), y(dst, 0.420f), x(dst, 0.570f), y(dst, 0.386f))
+                moveTo(x(dst, 0.562f), y(dst, 0.382f))
+                cubicTo(x(dst, 0.625f), y(dst, 0.337f), x(dst, 0.715f), y(dst, 0.338f), x(dst, 0.744f), y(dst, 0.382f))
+                cubicTo(x(dst, 0.734f), y(dst, 0.439f), x(dst, 0.693f), y(dst, 0.466f), x(dst, 0.638f), y(dst, 0.468f))
+                cubicTo(x(dst, 0.584f), y(dst, 0.459f), x(dst, 0.558f), y(dst, 0.416f), x(dst, 0.562f), y(dst, 0.382f))
                 close()
             }
         }
