@@ -4,9 +4,9 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.view.View
-import kotlin.math.abs
 import kotlin.math.sin
 
 class AvatarView(context: Context) : View(context) {
@@ -19,22 +19,32 @@ class AvatarView(context: Context) : View(context) {
     private var targetPitch = 0f
     private var targetRoll = 0f
     private var targetJaw = 0f
-    private var targetBlink = 0f
+    private var targetBlinkLeft = 0f
+    private var targetBlinkRight = 0f
 
     private var yaw = 0f
     private var pitch = 0f
     private var roll = 0f
     private var jaw = 0f
-    private var blink = 0f
+    private var blinkLeft = 0f
+    private var blinkRight = 0f
 
     private val startedAt = System.nanoTime()
 
-    fun updateFace(yaw: Float, pitch: Float, roll: Float, jaw: Float, blink: Float) {
+    fun updateFace(
+        yaw: Float,
+        pitch: Float,
+        roll: Float,
+        jaw: Float,
+        blinkLeft: Float,
+        blinkRight: Float
+    ) {
         targetYaw = yaw.coerceIn(-1f, 1f)
         targetPitch = pitch.coerceIn(-1f, 1f)
         targetRoll = roll.coerceIn(-1f, 1f)
         targetJaw = jaw.coerceIn(0f, 1f)
-        targetBlink = blink.coerceIn(0f, 1f)
+        targetBlinkLeft = blinkLeft.coerceIn(0f, 1f)
+        targetBlinkRight = blinkRight.coerceIn(0f, 1f)
         postInvalidateOnAnimation()
     }
 
@@ -44,7 +54,8 @@ class AvatarView(context: Context) : View(context) {
             targetPitch = 0f
             targetRoll = 0f
             targetJaw = 0f
-            targetBlink = 0f
+            targetBlinkLeft = 0f
+            targetBlinkRight = 0f
         }
         postInvalidateOnAnimation()
     }
@@ -57,13 +68,8 @@ class AvatarView(context: Context) : View(context) {
         pitch += (targetPitch - pitch) * k
         roll += (targetRoll - roll) * k
         jaw += (targetJaw - jaw) * k
-        blink += (targetBlink - blink) * k
-
-        val bitmap = when {
-            blink > 0.58f -> assets.blink
-            jaw > 0.22f -> assets.talk
-            else -> assets.neutral
-        }
+        blinkLeft += (targetBlinkLeft - blinkLeft) * k
+        blinkRight += (targetBlinkRight - blinkRight) * k
 
         val w = width.toFloat()
         val h = height.toFloat()
@@ -74,39 +80,99 @@ class AvatarView(context: Context) : View(context) {
         val top = h * 0.08f
         val dst = RectF(left, top, left + drawSize, top + drawSize)
         val cx = dst.centerX()
-        val cy = dst.top + dst.height() * 0.49f
+        val headPivotY = dst.top + dst.height() * 0.46f
 
         val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
         val breathe = 1f + (sin(seconds * 1.45).toFloat() * 0.0045f)
 
-        // Body: nearly fixed, only tiny breathing.
+        // BODY: shoulder / jacket / chest only. No camera-driven movement.
         canvas.save()
-        canvas.clipRect(0f, dst.top + dst.height() * 0.53f, w, h)
+        val bodyTop = dst.top + dst.height() * 0.655f
+        canvas.clipRect(0f, bodyTop, w, h)
         canvas.scale(1.0015f, breathe, cx, dst.bottom)
         canvas.drawBitmap(assets.neutral, null, dst, paint)
         canvas.restore()
 
-        // Head: yaw / pitch / roll only affect the upper area.
+        // HEAD GROUP: user-defined face/head area only. Shoulders are excluded by the path.
         canvas.save()
-        canvas.clipRect(0f, 0f, w, dst.top + dst.height() * 0.74f)
 
         matrix.reset()
         camera.save()
-        camera.rotateY(yaw * 10f)
-        camera.rotateX(-pitch * 6.5f)
+        camera.rotateY(yaw * 9.5f)
+        camera.rotateX(-pitch * 6.0f)
         camera.getMatrix(matrix)
         camera.restore()
 
-        matrix.preTranslate(-cx, -cy)
-        matrix.postTranslate(cx + yaw * w * 0.010f, cy + pitch * h * 0.008f)
+        matrix.preTranslate(-cx, -headPivotY)
+        matrix.postTranslate(
+            cx + yaw * w * 0.009f,
+            headPivotY + pitch * h * 0.007f
+        )
         canvas.concat(matrix)
-        canvas.rotate(roll * 7f, cx, cy)
+        canvas.rotate(roll * 7f, cx, headPivotY)
 
-        val sx = 1f - abs(yaw) * 0.025f
-        canvas.scale(sx, 1f, cx, cy)
-        canvas.drawBitmap(bitmap, null, dst, paint)
+        val headPath = buildHeadPath(dst)
+        canvas.clipPath(headPath)
+
+        // Neutral head is the stable base.
+        canvas.drawBitmap(assets.neutral, null, dst, paint)
+
+        // Expression layers are clipped to local regions only.
+        if (blinkLeft > 0.52f) {
+            canvas.save()
+            canvas.clipRect(region(dst, 0.285f, 0.335f, 0.475f, 0.475f))
+            canvas.drawBitmap(assets.blink, null, dst, paint)
+            canvas.restore()
+        }
+
+        if (blinkRight > 0.52f) {
+            canvas.save()
+            canvas.clipRect(region(dst, 0.545f, 0.335f, 0.755f, 0.475f))
+            canvas.drawBitmap(assets.blink, null, dst, paint)
+            canvas.restore()
+        }
+
+        if (jaw > 0.18f) {
+            canvas.save()
+            canvas.clipRect(region(dst, 0.385f, 0.455f, 0.650f, 0.685f))
+            canvas.drawBitmap(assets.talk, null, dst, paint)
+            canvas.restore()
+        }
+
         canvas.restore()
-
         postInvalidateOnAnimation()
+    }
+
+    private fun region(
+        dst: RectF,
+        x0: Float,
+        y0: Float,
+        x1: Float,
+        y1: Float
+    ): RectF = RectF(
+        dst.left + dst.width() * x0,
+        dst.top + dst.height() * y0,
+        dst.left + dst.width() * x1,
+        dst.top + dst.height() * y1
+    )
+
+    private fun buildHeadPath(dst: RectF): Path {
+        fun x(v: Float) = dst.left + dst.width() * v
+        fun y(v: Float) = dst.top + dst.height() * v
+
+        // Approximation of the user's outlined movable area:
+        // hair + face + small neck ruff, explicitly excluding both shoulders.
+        return Path().apply {
+            moveTo(x(0.50f), y(0.015f))
+            cubicTo(x(0.30f), y(0.015f), x(0.13f), y(0.08f), x(0.085f), y(0.24f))
+            cubicTo(x(0.045f), y(0.38f), x(0.11f), y(0.54f), x(0.245f), y(0.595f))
+            cubicTo(x(0.30f), y(0.62f), x(0.34f), y(0.61f), x(0.39f), y(0.64f))
+            cubicTo(x(0.43f), y(0.67f), x(0.47f), y(0.685f), x(0.50f), y(0.69f))
+            cubicTo(x(0.54f), y(0.685f), x(0.58f), y(0.665f), x(0.62f), y(0.635f))
+            cubicTo(x(0.67f), y(0.605f), x(0.71f), y(0.615f), x(0.76f), y(0.59f))
+            cubicTo(x(0.90f), y(0.52f), x(0.965f), y(0.36f), x(0.915f), y(0.22f))
+            cubicTo(x(0.86f), y(0.075f), x(0.70f), y(0.015f), x(0.50f), y(0.015f))
+            close()
+        }
     }
 }
