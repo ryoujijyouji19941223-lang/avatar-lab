@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Color
 import android.view.View
 import kotlin.math.sin
 
@@ -14,6 +15,8 @@ class AvatarView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val camera = android.graphics.Camera()
     private val matrix = Matrix()
+    private val lidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(40, 39, 49); style = Paint.Style.FILL }
+    private val lashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(12, 12, 17); style = Paint.Style.STROKE; strokeWidth = 2.2f }
 
     private var targetYaw = 0f
     private var targetPitch = 0f
@@ -98,18 +101,18 @@ class AvatarView(context: Context) : View(context) {
 
         matrix.reset()
         camera.save()
-        camera.rotateY(yaw * 9.5f)
-        camera.rotateX(-pitch * 6.0f)
+        camera.rotateY(yaw * 13.0f)
+        camera.rotateX(-pitch * 8.4f)
         camera.getMatrix(matrix)
         camera.restore()
 
         matrix.preTranslate(-cx, -headPivotY)
         matrix.postTranslate(
-            cx + yaw * w * 0.009f,
-            headPivotY + pitch * h * 0.007f
+            cx + yaw * w * 0.0115f,
+            headPivotY + pitch * h * 0.010f
         )
         canvas.concat(matrix)
-        canvas.rotate(roll * 7f, cx, headPivotY)
+        canvas.rotate(roll * 8.2f, cx, headPivotY)
 
         val headPath = buildHeadPath(dst)
         canvas.clipPath(headPath)
@@ -117,30 +120,72 @@ class AvatarView(context: Context) : View(context) {
         // Neutral head is the stable base.
         canvas.drawBitmap(assets.neutral, null, dst, paint)
 
-        // Expression layers are clipped to local regions only.
-        if (blinkLeft > 0.52f) {
-            canvas.save()
-            canvas.clipRect(region(dst, 0.285f, 0.335f, 0.475f, 0.475f))
-            canvas.drawBitmap(assets.blink, null, dst, paint)
-            canvas.restore()
+        // A complete blink must cover the original iris, not merely paste a half-lidded eye.
+        // Coordinates are defined in the original neutral portrait reference system.
+        if (blinkLeft > 0.36f) {
+            drawClosedEye(canvas, dst, 0.378f, 0.411f, 0.180f, blinkLeft)
+        }
+        if (blinkRight > 0.36f) {
+            drawClosedEye(canvas, dst, 0.641f, 0.411f, 0.183f, blinkRight)
         }
 
-        if (blinkRight > 0.52f) {
+        // Keep hair, eyes and head contour in the neutral layer.
+        // Only a confined inner-mouth patch is replaced; the beak's top stays put.
+        if (jaw > 0.16f) {
             canvas.save()
-            canvas.clipRect(region(dst, 0.545f, 0.335f, 0.755f, 0.475f))
-            canvas.drawBitmap(assets.blink, null, dst, paint)
-            canvas.restore()
-        }
-
-        if (jaw > 0.18f) {
-            canvas.save()
-            canvas.clipRect(region(dst, 0.385f, 0.455f, 0.650f, 0.685f))
+            val opening = (jaw - 0.16f).coerceIn(0f, 0.84f) / 0.84f
+            // The face center is 0.50, not the old shifted source center (about 0.517).
+            // Crop to the V-shaped lower-beak interior, protecting both cheeks.
+            val mouth = Path().apply {
+                moveTo(dst.left + dst.width() * 0.419f, dst.top + dst.height() * 0.535f)
+                quadTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * 0.560f,
+                       dst.left + dst.width() * 0.586f, dst.top + dst.height() * 0.535f)
+                lineTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * (0.640f + opening * 0.016f))
+                close()
+            }
+            canvas.clipPath(mouth)
+            // Small optical correction to the imported talk frame.
+            canvas.translate(-dst.width() * 0.012f, 0f)
             canvas.drawBitmap(assets.talk, null, dst, paint)
             canvas.restore()
         }
 
         canvas.restore()
         postInvalidateOnAnimation()
+    }
+
+    private fun drawClosedEye(
+        canvas: Canvas,
+        dst: RectF,
+        centerX: Float,
+        centerY: Float,
+        widthFraction: Float,
+        intensity: Float
+    ) {
+        // The generated blink art still had exposed pupils. Cover the entire eye opening
+        // with a feather-toned lid, then draw the dark curved lash line.
+        val x = dst.left + dst.width() * centerX
+        val y = dst.top + dst.height() * centerY
+        val halfW = dst.width() * widthFraction * 0.5f
+        val eyeHeight = dst.height() * 0.047f
+        val openness = if (intensity > 0.57f) 1f else (intensity / 0.57f)
+        canvas.save()
+        val cover = Path().apply {
+            moveTo(x - halfW * 1.11f, y + eyeHeight * 0.34f)
+            quadTo(x, y - eyeHeight * 1.1f, x + halfW * 1.1f, y + eyeHeight * 0.28f)
+            quadTo(x, y + eyeHeight * 0.92f, x - halfW * 1.11f, y + eyeHeight * 0.34f)
+            close()
+        }
+        lidPaint.alpha = (255f * openness).toInt().coerceIn(0, 255)
+        canvas.drawPath(cover, lidPaint)
+        val lash = Path().apply {
+            moveTo(x - halfW * 1.1f, y + eyeHeight * 0.26f)
+            quadTo(x, y + eyeHeight * 0.65f, x + halfW * 1.1f, y + eyeHeight * 0.26f)
+        }
+        lashPaint.strokeWidth = dst.width() * 0.009f
+        lashPaint.alpha = lidPaint.alpha
+        canvas.drawPath(lash, lashPaint)
+        canvas.restore()
     }
 
     private fun region(
