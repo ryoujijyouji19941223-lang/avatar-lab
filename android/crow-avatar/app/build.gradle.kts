@@ -15,7 +15,19 @@ android {
         versionName = "0.2.0"
     }
 
+    signingConfigs {
+        create("crowTest") {
+            storeFile = file("crow-test.jks")
+            storePassword = "crowavatar-test"
+            keyAlias = "crowtest"
+            keyPassword = "crowavatar-test"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("crowTest")
+        }
         release {
             isMinifyEnabled = false
         }
