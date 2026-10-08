@@ -145,11 +145,19 @@ class MainActivity : ComponentActivity() {
                             pose.pitch,
                             pose.roll,
                             pose.jaw,
-                            pose.blink
+                            pose.blinkLeft,
+                            pose.blinkRight
                         )
                         status.text =
-                            "追跡中  左右 %.2f / 上下 %.2f / 傾き %.2f / 口 %.2f"
-                                .format(pose.yaw, pose.pitch, pose.roll, pose.jaw)
+                            "追跡中  左右 %.2f / 上下 %.2f / 傾き %.2f / 口 %.2f / 左目 %.2f / 右目 %.2f"
+                                .format(
+                                    pose.yaw,
+                                    pose.pitch,
+                                    pose.roll,
+                                    pose.jaw,
+                                    pose.blinkLeft,
+                                    pose.blinkRight
+                                )
                     }
                 },
                 onError = { message ->
