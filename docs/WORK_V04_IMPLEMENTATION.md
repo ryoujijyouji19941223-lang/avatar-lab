@@ -61,7 +61,10 @@ Screen stays awake. UI work is on the main thread; model initialization is off i
 
 「配信画面」 hides controls and system bars. Tap the avatar or use Back to return.
 Front camera remains this app's camera; streaming uses the phone's screen capture.
-No microphone, network, storage or overlay permission is requested.
+Camera is the only runtime permission requested. No microphone, storage or
+overlay permission is requested. MediaPipe dependencies merge the normal
+INTERNET / ACCESS_NETWORK_STATE permissions into the APK; app code itself makes
+no network requests and the face model is packaged locally.
 
 ## Automated evidence
 
@@ -108,3 +111,32 @@ Automated rendering endurance is not a claim of 30-second Galaxy camera stabilit
 The existing 480px source limits close-up detail. Lid feather texture and the
 neck overlap need subjective device review. Camera tracking while this activity
 is not visible is deliberately stopped; screen capture must keep it visible.
+
+
+## Successful build receipt (2026-10-09 JST)
+
+- Build commit: `0452f5342819b08cbbfdb437d81590afcb97bd3c`.
+- [Successful Actions run](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37821369542)
+  finished `testDebugUnitTest`, `lintDebug`, `assembleDebug` and both artifact uploads.
+- Five native-graphics tests pass. Lint has no errors; remaining warnings are
+  recorded in the checks artifact. The second iteration's manifest lint error
+  was fixed by explicit optional rear-camera / autofocus feature declarations.
+- [APK artifact](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37821369542/artifacts/11570110175).
+- [Checks and render images](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37821369542/artifacts/11570015267).
+- Extracted APK: 55,774,255 bytes, Android 8+ (minSdk 26), targetSdk 35,
+  version `0.4-work` (40). Includes `arm64-v8a` for Galaxy, plus three other ABIs.
+- SHA-256: `111be89533abeda1a5d5d972f87eb712c0c0ebca1fc6143effcbb492924f6caa`.
+- `apksigner verify --verbose --print-certs`: signature verified (v2).
+  Existing test certificate SHA-256:
+  `4df18e204b454053c3474ee42864732eb58358055c295482dc681674430d6046`.
+- `aapt dump badging`: Work package and label confirmed; packaged Face Landmarker
+  model is 3,758,596 bytes. The provided APK is extracted from this Actions
+  artifact, not rebuilt locally. Local build attempts could not finish dependency
+  downloads in the workspace network environment; GitHub Actions is the successful
+  build and verification environment.
+- Two correction rounds after initial implementation: eyelid/neck rendering,
+  then manifest hardware declarations. No code changed after the successful build;
+  this receipt is a documentation-only follow-up.
+- Galaxy acceptance conditions remain pending. In particular, eyelid appearance,
+  live wink side/sensitivity, neck continuity at extremes, actual 30+ second camera
+  stability, and screen-capture compatibility must be checked on the phone.
