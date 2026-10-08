@@ -11,8 +11,8 @@ android {
         applicationId = "com.totomarujapan.crowavatar.chatv04"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "0.4-chat"
+        versionCode = 41
+        versionName = "0.4-chat-r2"
     }
 
     signingConfigs {
