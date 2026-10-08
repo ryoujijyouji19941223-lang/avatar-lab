@@ -3,7 +3,7 @@ name: Build Crow Avatar APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, "experiment/chat-v04", "experiment/work-v04"]
     paths:
       - "android/crow-avatar/**"
       - ".github/workflows/android-crow-apk.yml"
