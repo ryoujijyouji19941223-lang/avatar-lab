@@ -38,6 +38,12 @@ jobs:
         with:
           gradle-version: "8.13"
 
+      - name: Restore fixed test signing key
+        working-directory: android/crow-avatar
+        run: |
+          base64 --decode signing/crow-test.jks.b64 > app/crow-test.jks
+          test -s app/crow-test.jks
+
       - name: Download Face Landmarker model into app assets
         working-directory: android/crow-avatar
         run: |
