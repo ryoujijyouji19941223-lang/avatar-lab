@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
     private fun buildControls(): LinearLayout {
         status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 12f
-            text = "Crow Avatar Work v0.4\n顔を正面にして開始。左目は画面右、右目は画面左です。"
+            text = "Crow Avatar Work v0.4\n目を開けて正面にして開始。左目は画面右、右目は画面左です。"
             setPadding(dp(8), dp(4), dp(8), dp(4))
         }
         fun button(label: String, action: () -> Unit) = Button(this).apply {
@@ -139,7 +139,7 @@ class MainActivity : ComponentActivity() {
                                 provider?.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
                                 starting = false; tracking = true; trackingSince = SystemClock.uptimeMillis()
                                 avatar.setTracking(true); trackButton.text = "追従停止"
-                                status.text = "前面カメラ起動。正面が自動で基準になります。"
+                                status.text = "前面カメラ起動。目を開けて正面に。目の開きと正面を合わせます。"
                             } catch (e: Exception) { stopTracking(); status.text = "カメラ起動失敗: ${e.message}" }
                         }
                     }, ContextCompat.getMainExecutor(this))

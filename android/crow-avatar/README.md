@@ -1,4 +1,4 @@
-# Crow Avatar Work v0.4
+# Crow Avatar Work v0.4.1
 
 Android/Galaxy face-following 2D Crow rig. Package:
 `com.totomarujapan.crowavatar.workv04`, label `Crow Avatar Work`.
@@ -13,4 +13,7 @@ GitHub Actions builds and uploads `crow-avatar-work-v04-apk` and
 Download the APK artifact on the phone, extract it, then open `app-debug.apk`.
 The fixed existing test signing key permits updates to the Work app.
 Camera permission is requested only when tracking starts; render test buttons
-work without it. First detected face sets the head's neutral pose.
+work without it. Keep eyes open on start and when using 「正面を合わせる」 to set the head neutral
+pose and each eye's open reference. v0.4.1 brightens the mouth interior and
+corroborates blendshape blinks with each eye's lid geometry to reduce unintended
+half-closing during head turns. Real Galaxy verification remains required.

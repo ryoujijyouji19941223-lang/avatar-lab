@@ -19,7 +19,9 @@ object RigMotion {
 }
 class CrowRenderer(private val layers: AvatarLayers) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val mouthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(19, 10, 22) }
+    private val mouthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(48, 29, 53) }
+    private val mouthFloorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tonguePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(164, 108, 125) }
     private val lipPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(33, 29, 39); style = Paint.Style.STROKE; strokeWidth = 1f; strokeCap = Paint.Cap.ROUND
     }
@@ -80,6 +82,21 @@ class CrowRenderer(private val layers: AvatarLayers) {
             quadTo(221f, tip[1] - 15f, 199f, 242f); close()
         }
         canvas.drawPath(inside, mouthPaint) // deepest mouth layer
+        // Keep all new shading below the fixed upper beak tip. Nothing above
+        // y=292 changes with jaw, including the source's antialiased upper rim.
+        if (opening > 0.02f) {
+            canvas.save(); canvas.clipPath(inside); canvas.clipRect(197f, 292f, 305f, tip[1]+3f)
+            mouthFloorPaint.shader = LinearGradient(251f,292f,251f,tip[1]+3f,
+                Color.rgb(48,29,53),Color.rgb(113,72,91),Shader.TileMode.CLAMP)
+            canvas.drawPath(inside,mouthFloorPaint)
+            val tongue = Path().apply {
+                moveTo(237f,tip[1]-5f)
+                quadTo(251f,tip[1]-14f,265f,tip[1]-5f)
+                quadTo(251f,tip[1]+1f,237f,tip[1]-5f); close()
+            }
+            canvas.drawPath(tongue,tonguePaint)
+            canvas.restore()
+        }
         canvas.save(); canvas.concat(beak); canvas.drawBitmap(layers.lowerBeak, 0f, 0f, paint); canvas.restore()
         canvas.drawBitmap(layers.upperBeak, 0f, 0f, paint) // fixed, frontmost; never receives jaw
     }

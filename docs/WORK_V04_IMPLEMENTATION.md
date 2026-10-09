@@ -140,3 +140,54 @@ is not visible is deliberately stopped; screen capture must keep it visible.
 - Galaxy acceptance conditions remain pending. In particular, eyelid appearance,
   live wink side/sensitivity, neck continuity at extremes, actual 30+ second camera
   stability, and screen-capture compatibility must be checked on the phone.
+
+## Follow-up v0.4.1 — mouth visibility and false partial blinks
+
+User feedback: the open mouth interior was too dark, and head yaw/pitch produced
+unintended partly closed eyes on Galaxy. This is not a structural requirement of
+2D rendering: HEAD pose and eyelid inputs are separate. The old renderer admitted
+blink scores above 0.08 without corroborating actual lid opening. That makes a
+pose-related tracking score change visible. We have not received a recording of
+this particular symptom, so that is the code-based diagnosis rather than a
+measured explanation of every affected frame.
+
+The interior now has a muted purple backing (48,29,53), a brighter shaded mouth
+floor and a muted pink tongue behind the lower beak. All changing shading stays
+below the fixed upper tip (y=292), preserving upper beak, eyes and hair. Mouth
+centre, hinge, BODY and HEAD masks are unchanged.
+
+`EyeInputGeometry` computes the average of three perpendicular upper/lower-lid
+3D separations divided by the corner-to-corner 3D eye width. Normalized y is
+converted to image-width units using the rotated image aspect; x and z already
+use width units. True 3D rigid yaw/pitch/roll preserve that ratio; the MediaPipe
+points themselves are estimates, so this does not promise perfect pose invariance
+for real camera inference.
+
+Two separate `EyeBlinkInput` states calibrate left/right open-eye aperture on
+start and 「正面を合わせる」. The phone user should keep eyes open for calibration.
+Normal wide-open geometry suppresses a false blink even if the blendshape rises.
+A 16% opening tolerance absorbs moderate landmark noise; partial closure is
+admitted continuously and an independently corroborated strong blink saturates
+at full closure. Held winks do not adapt into the open reference. Slow reference
+adaptation accepts only low-blink frontal frames within 10% of the current open
+reference, avoiding maximum-value drift or pose outliers.
+
+At extreme estimated yaw (>54°) or pitch (>43°), or with degenerate eye geometry,
+blink output returns open rather than keeping a guessed partial closure. A real
+wink at those extreme poses will therefore not be reproduced reliably. This is
+an explicitly documented camera visibility limit, not a claim that all 2D rigs
+must half-close. Normal head turns retain independent wink control.
+
+New deterministic tests verify ratio invariance over all combinations of 3D
+rotations/scale/translation, inflated scores with open geometry, held independent
+winks, continuous partial closure, calibration outliers and invalid/extreme inputs.
+Native mouth tests additionally check visible floor/tongue pixels and fixed upper
+beak/eyes/hair/torso. Device confirmation remains necessary: first calibrate with
+eyes open, turn head without blinking, then wink each eye normally and open mouth.
+
+The official topology/coordinate references used for this independent correction:
+- https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/java/com/google/mediapipe/tasks/vision/facelandmarker/FaceLandmarksConnections.java
+- https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker
+
+The successful-build receipt above describes the original 0.4 APK; 0.4.1 changes
+its code and requires a new successful build before delivery.

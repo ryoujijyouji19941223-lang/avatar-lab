@@ -54,6 +54,14 @@ class CrowRigTest {
         for(y in 288..344) for(x in 230..274) if(base.getPixel(x,y)!=open.getPixel(x,y)) changed++
         assertTrue("lower beak must move",changed>50)
         assertTrue("interior is opaque behind upper/lower",Color.alpha(open.getPixel(251,300))==255)
+        val interior = open.getPixel(251,300)
+        assertTrue("mouth floor is visible rather than near black",Color.red(interior)>48 && Color.green(interior)>25)
+        var tonguePixels = 0
+        for (y in 294..344) for(x in 235..267) {
+            val color = open.getPixel(x,y)
+            if (Color.red(color)>145 && Color.red(color)>Color.green(color)*1.3f) tonguePixels++
+        }
+        assertTrue("tongue remains behind lower beak and visible in cavity",tonguePixels>5)
     }
     @Test fun bodyNeverFollowsHeadAndHingeKeepsMouthCentered() {
         val base=render()

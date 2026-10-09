@@ -31,6 +31,8 @@ class FaceTracker(context: Context, private val onPose: (FacePose?) -> Unit) : A
     private var closed = false
     private var lastTimestamp = -1L
     private var centre: FloatArray? = null
+    private val leftBlink = EyeBlinkInput()
+    private val rightBlink = EyeBlinkInput()
     @Volatile private var recenterRequested = false
     fun recenter() { recenterRequested = true }
 
@@ -54,20 +56,38 @@ class FaceTracker(context: Context, private val onPose: (FacePose?) -> Unit) : A
             val transform = Matrix().apply { postRotate(rotation.toFloat()) }
             // No horizontal mirroring: eyeBlinkLeft/Right remain anatomical sides.
             rotated = Bitmap.createBitmap(bitmap, 0, 0, proxy.width, proxy.height, transform, true)
-            BitmapImageBuilder(rotated).build().use { input ->
+            val frameBitmap = requireNotNull(rotated)
+            BitmapImageBuilder(frameBitmap).build().use { input ->
                 val result = landmarker.detectForVideo(input, timestamp)
                 val m = result.facialTransformationMatrixes().orElse(emptyList()).firstOrNull()
                 if (m == null || result.faceLandmarks().isEmpty()) { onPose(null); return }
                 val angles = FaceRotation.radians(m)
-                if (centre == null || recenterRequested) { centre = angles.copyOf(); recenterRequested = false }
+                // Use eye geometry in width units after portrait rotation. 3D
+                // distances reject foreshortening from head yaw/pitch/roll.
+                val rotatedAspect = frameBitmap.height.toFloat() / frameBitmap.width
+                val points = result.faceLandmarks().first().map {
+                    EyePoint(it.x(), it.y()*rotatedAspect, it.z())
+                }
+                val leftAperture = EyeInputGeometry.aperture(points, EyeInputGeometry.LEFT)
+                val rightAperture = EyeInputGeometry.aperture(points, EyeInputGeometry.RIGHT)
+                // At an extreme angle the hidden eye cannot be reliably inferred.
+                // Return open rather than retain a false partial blink.
+                val reliable = abs(angles[0]) < 0.95f && abs(angles[1]) < 0.75f
+                if (centre == null || recenterRequested) {
+                    centre = angles.copyOf(); recenterRequested = false
+                    leftBlink.reset(leftAperture); rightBlink.reset(rightAperture)
+                }
                 val c = requireNotNull(centre)
+                val calibrate = abs(angles[0]-c[0]) < 0.18f && abs(angles[1]-c[1]) < 0.18f
                 val blends = result.faceBlendshapes().orElse(emptyList()).firstOrNull().orEmpty()
                 fun score(name: String) = blends.firstOrNull { it.categoryName() == name }?.score() ?: 0f
                 onPose(FacePose(
                     ((angles[0]-c[0]) / 0.60f).coerceIn(-1f,1f),
                     ((angles[1]-c[1]) / 0.45f).coerceIn(-1f,1f),
                     ((angles[2]-c[2]) / 0.40f).coerceIn(-1f,1f),
-                    score("jawOpen"), score("eyeBlinkLeft"), score("eyeBlinkRight")))
+                    score("jawOpen"),
+                    leftBlink.update(score("eyeBlinkLeft"), leftAperture, reliable, calibrate),
+                    rightBlink.update(score("eyeBlinkRight"), rightAperture, reliable, calibrate)))
             }
         } finally {
             proxy.close()
