@@ -212,3 +212,32 @@ The official topology/coordinate references used for this independent correction
   the reported live symptom is fully resolved. Calibrate with eyes open, then
   check head turns and independent winks on the phone.
 - This receipt is documentation only; code is unchanged after the successful run.
+
+## Follow-up v0.4.2 — mouth boundary regression from Galaxy recording
+
+The user reports that eye tracking improved, but the mouth looked broken. The
+provided 12.8-second screen recording shows a wide purple wedge on either side
+of the upper beak even when the jaw input reads zero. The old mouth path started
+at the outer upper-beak corners (199,242 / 302,242), and was painted over HEAD.
+Those areas contain cheek feathers, not the lower-beak opening. Brightening the
+previous near-black backing made this pre-existing incorrect footprint much
+more visible. This is a renderer boundary bug, not a camera or user error.
+
+The mouth interior now follows the original lower-beak top curve and the actual
+hinge-transformed lower-beak corners/tip. At rest its footprint matches the
+lower-beak cutout; while opening it covers only the space vacated by that beak.
+The fixed upper beak remains frontmost. Purple floor shading and a small tongue
+are clipped inside this narrower cavity, with the tongue above the moving lower
+rim. Head/eye/body layers, pose motion, jaw input and eye correction are unchanged.
+
+The previous automated test checked upper-beak invariance and whether the mouth
+floor/tongue were visible, but not whether closed/open cheeks matched the source.
+It therefore passed an already incorrect neutral image. New native pixel checks
+compare both cheeks directly with the original portrait at closed and ten jaw
+positions, check source beak pixels at rest, and broaden upper-beak invariance.
+Previews include slight, partial, full and yaw-plus-open mouth. CI and visual
+inspection of the new artifact must succeed before delivering the updated APK.
+
+Galaxy feedback about improved eyes is retained as user observation, not a claim
+that every pose/wink acceptance condition has been measured. The phone still
+needs to confirm corrected mouth appearance and 30-second live stability.

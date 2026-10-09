@@ -75,24 +75,34 @@ class CrowRenderer(private val layers: AvatarLayers) {
     internal fun beakTransform(opening: Float) = Matrix().apply { setConcat(beakProjection(opening), restInverse) }
     private fun drawMouth(canvas: Canvas, opening: Float) {
         val beak = beakTransform(opening)
-        val tip = floatArrayOf(251f, 315f); beak.mapPoints(tip)
+        // The original lower-beak cutout is only x=230..274 near the upper
+        // tip. Outer upper-beak corners (197,242 / 304,242) are surrounded by
+        // face feathers; they are not the boundary of the visible mouth hole.
+        // Follow the lower rim's actual transformed corners and tip so the
+        // cavity fills only the gap left by the hinged lower beak.
+        val rim = floatArrayOf(230f,288f,249f,299f,274f,285f,251f,315f)
+        beak.mapPoints(rim)
         val inside = Path().apply {
-            moveTo(199f, 242f); quadTo(251f, 272f, 302f, 242f)
-            quadTo(286f, tip[1] - 16f, 251f, tip[1] + 2f)
-            quadTo(221f, tip[1] - 15f, 199f, 242f); close()
+            moveTo(230f,288f); quadTo(249f,299f,274f,285f)
+            lineTo(rim[4],rim[5]); lineTo(rim[6],rim[7])
+            lineTo(rim[0],rim[1]); close()
         }
         canvas.drawPath(inside, mouthPaint) // deepest mouth layer
         // Keep all new shading below the fixed upper beak tip. Nothing above
         // y=292 changes with jaw, including the source's antialiased upper rim.
         if (opening > 0.02f) {
-            canvas.save(); canvas.clipPath(inside); canvas.clipRect(197f, 292f, 305f, tip[1]+3f)
-            mouthFloorPaint.shader = LinearGradient(251f,292f,251f,tip[1]+3f,
+            canvas.save(); canvas.clipPath(inside); canvas.clipRect(229f,292f,275f,rim[7]+1f)
+            // Place the tongue in the exposed gap, above the moving lower rim.
+            val gapFloor = (rim[1]+2f*rim[3]+rim[5])/4f
+            mouthFloorPaint.shader = LinearGradient(251f,292f,251f,max(293f,gapFloor),
                 Color.rgb(48,29,53),Color.rgb(113,72,91),Shader.TileMode.CLAMP)
             canvas.drawPath(inside,mouthFloorPaint)
+            val tongueY = gapFloor-1f
+            val tongueWidth = 7f+opening*3f
             val tongue = Path().apply {
-                moveTo(237f,tip[1]-5f)
-                quadTo(251f,tip[1]-14f,265f,tip[1]-5f)
-                quadTo(251f,tip[1]+1f,237f,tip[1]-5f); close()
+                moveTo(251f-tongueWidth,tongueY)
+                quadTo(251f,tongueY-5f,251f+tongueWidth,tongueY)
+                quadTo(251f,tongueY+3f,251f-tongueWidth,tongueY); close()
             }
             canvas.drawPath(tongue,tonguePaint)
             canvas.restore()

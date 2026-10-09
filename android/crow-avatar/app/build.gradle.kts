@@ -11,8 +11,8 @@ android {
         applicationId = "com.totomarujapan.crowavatar.workv04"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "0.4.1-work"
+        versionCode = 42
+        versionName = "0.4.2-work"
     }
 
     signingConfigs {

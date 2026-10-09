@@ -1,6 +1,8 @@
 package com.totomarujapan.crowavatar
 
 import android.graphics.*
+import android.util.Base64
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -63,6 +65,24 @@ class CrowRigTest {
         }
         assertTrue("tongue remains behind lower beak and visible in cavity",tonguePixels>5)
     }
+    @Test fun mouthNeverPaintsOverOriginalCheeksIncludingWhenClosed() {
+        val context = RuntimeEnvironment.getApplication()
+        val json = JSONObject(context.assets.open("avatar_images.json").bufferedReader().use { it.readText() })
+        val bytes = Base64.decode(json.getString("neutral").substringAfter(","),Base64.DEFAULT)
+        val source = requireNotNull(BitmapFactory.decodeByteArray(bytes,0,bytes.size))
+        val closed = render()
+        // The previous wide cavity painted these feather regions purple even
+        // at jaw=0. Comparing only open vs closed could never catch that bug.
+        val cheeks = listOf(Rect(205,275,228,320),Rect(276,275,296,320))
+        cheeks.forEach { same(source,closed,it) }
+        for (point in listOf(240 to 300,251 to 300,255 to 304))
+            assertEquals("closed mouth preserves source beak",source.getPixel(point.first,point.second),closed.getPixel(point.first,point.second))
+        for (i in 1..10) render(FacePose(jaw=i/10f)).useBitmap { posed ->
+            cheeks.forEach { same(source,posed,it) }
+            same(closed,posed,Rect(197,207,305,285))
+        }
+        closed.recycle(); source.recycle()
+    }
     @Test fun bodyNeverFollowsHeadAndHingeKeepsMouthCentered() {
         val base=render()
         listOf(FacePose(yaw=1f),FacePose(yaw=-1f),FacePose(pitch=1f),FacePose(pitch=-1f),
@@ -83,6 +103,7 @@ class CrowRigTest {
             "right-eye" to FacePose(blinkRight=1f),"both-eyes" to FacePose(blinkLeft=1f,blinkRight=1f),
             "half-blink" to FacePose(blinkLeft=0.4f,blinkRight=0.4f),
             "half-mouth" to FacePose(jaw=0.4f),"open-mouth" to FacePose(jaw=1f),
+            "slight-mouth" to FacePose(jaw=0.1f),"mouth-yaw" to FacePose(yaw=1f,jaw=1f),
             "yaw-left" to FacePose(yaw=1f),"yaw-right" to FacePose(yaw=-1f),
             "pitch-up" to FacePose(pitch=1f),"pitch-down" to FacePose(pitch=-1f),
             "roll-left" to FacePose(roll=1f),"roll-right" to FacePose(roll=-1f),

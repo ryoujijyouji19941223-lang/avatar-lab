@@ -1,4 +1,4 @@
-# Crow Avatar Work v0.4.1
+# Crow Avatar Work v0.4.2
 
 Android/Galaxy face-following 2D Crow rig. Package:
 `com.totomarujapan.crowavatar.workv04`, label `Crow Avatar Work`.
@@ -16,4 +16,6 @@ Camera permission is requested only when tracking starts; render test buttons
 work without it. Keep eyes open on start and when using 「正面を合わせる」 to set the head neutral
 pose and each eye's open reference. v0.4.1 brightens the mouth interior and
 corroborates blendshape blinks with each eye's lid geometry to reduce unintended
-half-closing during head turns. Real Galaxy verification remains required.
+half-closing during head turns. v0.4.2 corrects the mouth cavity boundary: the
+interior stays between the beaks and no longer paints over the cheek feathers,
+including when the mouth is closed. Real Galaxy verification remains required.
