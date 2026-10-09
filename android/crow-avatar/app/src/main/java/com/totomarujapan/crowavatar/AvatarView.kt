@@ -62,15 +62,18 @@ class CrowRenderer(private val layers: AvatarLayers) {
             canvas.drawPath(contour.line(upper), lipPaint); lipPaint.alpha = 255
         }
     }
-    /** Actual X-axis hinge rotation, normalized to an identity transform at rest.
+    /** Orthographic X-axis hinge rotation, normalized to identity at rest.
      * No asymmetric translation or Z rotation: mouth centre stays at x=251.
      */
     internal fun beakProjection(opening: Float): Matrix {
-        val c = Camera(); val m = Matrix()
-        c.save(); c.rotateX(42f - opening * 30f); c.getMatrix(m); c.restore()
-        m.preTranslate(-RigGeometry.HINGE_X, -RigGeometry.HINGE_Y)
-        m.postTranslate(RigGeometry.HINGE_X, RigGeometry.HINGE_Y + opening * 2f)
-        return m
+        // Project a plane pitched 42 -> 12 degrees about the beak hinge.
+        // Explicit math avoids platform/test Camera native-state differences
+        // and makes both the rim and the bitmap use the same verified matrix.
+        val cosine = cos((42f-opening*30f)*PI.toFloat()/180f)
+        return Matrix().apply { setValues(floatArrayOf(
+            1f,0f,0f,
+            0f,cosine,RigGeometry.HINGE_Y*(1f-cosine)+opening*2f,
+            0f,0f,1f)) }
     }
     internal fun beakTransform(opening: Float) = Matrix().apply { setConcat(beakProjection(opening), restInverse) }
     private fun drawMouth(canvas: Canvas, opening: Float) {

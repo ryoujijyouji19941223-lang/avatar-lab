@@ -113,6 +113,8 @@ class CrowRigTest {
             renderer.beakTransform(i/10f).mapPoints(point)
             assertEquals(251f,point[0],0.01f)
             if(i>0) assertTrue("lower tip opens down",point[1]>315f)
+            if(i==10) assertEquals("full hinge rotation, not just the 2px offset",
+                244f+(315f-244f)*cos(12f*PI.toFloat()/180f)/cos(42f*PI.toFloat()/180f)+2f,point[1],0.01f)
         }
     }
     @Test fun nativeRenderGalleryAndThirtySecondRigExercise() {

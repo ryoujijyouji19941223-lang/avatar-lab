@@ -235,6 +235,16 @@ now backs this area underneath the original HEAD portrait, and the lower beak
 has an opaque grey material backing beneath its source texture. Eye/body layers,
 head pose motion, jaw input and eye correction are unchanged.
 
+The revised native previews also exposed a verification gap: the original
+Camera-based lower-beak projection produced only the 2px offset in this test
+environment, so it was not validating the actual 42-to-12-degree hinge motion.
+Lower-beak projection now explicitly computes an orthographic X-axis rotation
+matrix (cosine foreshortening), normalized to identity at rest. The moving rim
+and bitmap share this matrix on Android and in native tests. A numeric assertion
+checks the full expected tip displacement, not merely that it moved down. Head
+pose projection still uses the existing Camera path; live head pose validation
+remains a Galaxy task.
+
 The previous automated test checked upper-beak invariance and whether the mouth
 floor/tongue were visible, but not whether closed/open cheeks matched the source.
 It therefore passed an already incorrect neutral image. New native pixel checks
