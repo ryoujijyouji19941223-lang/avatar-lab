@@ -189,5 +189,26 @@ The official topology/coordinate references used for this independent correction
 - https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/java/com/google/mediapipe/tasks/vision/facelandmarker/FaceLandmarksConnections.java
 - https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker
 
-The successful-build receipt above describes the original 0.4 APK; 0.4.1 changes
-its code and requires a new successful build before delivery.
+## Successful v0.4.1 build receipt (2026-10-09 JST)
+
+- Code commit: `6c3a92158d6247fb38f8a120aed8f6f0e49199ce`.
+- [Successful Actions run](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37906570531)
+  completed `testDebugUnitTest lintDebug assembleDebug` and both artifact uploads.
+- Eleven tests pass: six eye-input tests and five native-graphics rig tests;
+  zero failures/errors. Lint has zero errors and 23 warnings in its report.
+- [APK artifact](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37906570531/artifacts/11604627996).
+- [Checks and native render images](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37906570531/artifacts/11604294048).
+- The extracted APK is 55,774,251 bytes, version `0.4.1-work` (41), same Work
+  package, minSdk 26 / targetSdk 35, with Galaxy's arm64-v8a ABI and the bundled
+  3,758,596-byte Face Landmarker model.
+- SHA-256: `5b7389aa87b2b11607b02b89b8679654bca7f2786d4c7dbdd57935bbffc1b868`.
+- `apksigner verify --verbose --print-certs` verifies v2 signature; certificate
+  SHA-256 matches the original Work APK:
+  `4df18e204b454053c3474ee42864732eb58358055c295482dc681674430d6046`.
+  This is an update install, with no need to uninstall the old Work app.
+- Native full/partial-mouth PNGs were visually inspected: the purple cavity and
+  tongue are visible behind the beak. Real camera suppression of false blinks
+  remains pending Galaxy feedback; synthetic input tests cannot establish that
+  the reported live symptom is fully resolved. Calibrate with eyes open, then
+  check head turns and independent winks on the phone.
+- This receipt is documentation only; code is unchanged after the successful run.
