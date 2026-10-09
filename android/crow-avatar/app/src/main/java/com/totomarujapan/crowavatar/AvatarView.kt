@@ -1,22 +1,26 @@
 package com.totomarujapan.crowavatar
 
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.graphics.Color
+import android.graphics.*
 import android.view.View
 import kotlin.math.sin
 
+/**
+ * Black Rabbit Chat v0.1
+ *
+ * Crow lesson applied from the start:
+ * - body and head are separate groups
+ * - blink is an eyelid occlusion of the existing eye, not a black bar
+ * - left/right eyes are independent
+ * - mouth is split into fixed upper muzzle, mouth interior, moving lower jaw
+ * - opening the mouth never swaps the whole face
+ */
 class AvatarView(context: Context) : View(context) {
-    private val assets = AvatarAssets.load(context)
+    private val layers = AvatarAssets.load(context)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val furPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(54, 51, 61) }
     private val camera = android.graphics.Camera()
     private val matrix = Matrix()
-    private val lidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(40, 39, 49); style = Paint.Style.FILL }
-    private val lashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(12, 12, 17); style = Paint.Style.STROKE; strokeWidth = 2.2f }
 
     private var targetYaw = 0f
     private var targetPitch = 0f
@@ -65,159 +69,231 @@ class AvatarView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
-        val k = 0.22f
-        yaw += (targetYaw - yaw) * k
-        pitch += (targetPitch - pitch) * k
-        roll += (targetRoll - roll) * k
-        jaw += (targetJaw - jaw) * k
-        blinkLeft += (targetBlinkLeft - blinkLeft) * k
-        blinkRight += (targetBlinkRight - blinkRight) * k
+        val poseK = 0.22f
+        val expressionK = 0.31f
+        yaw += (targetYaw - yaw) * poseK
+        pitch += (targetPitch - pitch) * poseK
+        roll += (targetRoll - roll) * poseK
+        jaw += (targetJaw - jaw) * expressionK
+        blinkLeft += (targetBlinkLeft - blinkLeft) * expressionK
+        blinkRight += (targetBlinkRight - blinkRight) * expressionK
 
         val w = width.toFloat()
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
-        val drawSize = minOf(w * 1.06f, h * 0.77f)
-        val left = (w - drawSize) / 2f
-        val top = h * 0.08f
-        val dst = RectF(left, top, left + drawSize, top + drawSize)
-        val cx = dst.centerX()
-        val headPivotY = dst.top + dst.height() * 0.46f
+        // Portrait framing: full ears + shoulders, close enough to inspect eyes and mouth.
+        val modelW = minOf(w * 0.96f, h * 0.72f)
+        val scale = modelW / 480f
+        val originX = (w - 480f * scale) * 0.5f
+        val originY = h * 0.025f
 
-        val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
-        val breathe = 1f + (sin(seconds * 1.45).toFloat() * 0.0045f)
-
-        // BODY: shoulder / jacket / chest only. No camera-driven movement.
         canvas.save()
-        val bodyTop = dst.top + dst.height() * 0.655f
-        canvas.clipRect(0f, bodyTop, w, h)
-        canvas.scale(1.0015f, breathe, cx, dst.bottom)
-        canvas.drawBitmap(assets.neutral, null, dst, paint)
-        canvas.restore()
+        canvas.translate(originX, originY)
+        canvas.scale(scale, scale)
 
-        // HEAD GROUP: user-defined face/head area only. Shoulders are excluded by the path.
-        canvas.save()
-
-        matrix.reset()
-        camera.save()
-        camera.rotateY(yaw * 13.0f)
-        camera.rotateX(-pitch * 8.4f)
-        camera.getMatrix(matrix)
-        camera.restore()
-
-        matrix.preTranslate(-cx, -headPivotY)
-        matrix.postTranslate(
-            cx + yaw * w * 0.0115f,
-            headPivotY + pitch * h * 0.010f
-        )
-        canvas.concat(matrix)
-        canvas.rotate(roll * 8.2f, cx, headPivotY)
-
-        val headPath = buildHeadPath(dst)
-        canvas.clipPath(headPath)
-
-        // Neutral head is the stable base.
-        canvas.drawBitmap(assets.neutral, null, dst, paint)
-
-        // A complete blink must cover the original iris, not merely paste a half-lidded eye.
-        // Coordinates are defined in the original neutral portrait reference system.
-        if (blinkLeft > 0.36f) {
-            drawClosedEye(canvas, dst, 0.378f, 0.411f, 0.180f, blinkLeft)
-        }
-        if (blinkRight > 0.36f) {
-            drawClosedEye(canvas, dst, 0.641f, 0.411f, 0.183f, blinkRight)
-        }
-
-        // Keep hair, eyes and head contour in the neutral layer.
-        // Only a confined inner-mouth patch is replaced; the beak's top stays put.
-        if (jaw > 0.16f) {
-            canvas.save()
-            val opening = (jaw - 0.16f).coerceIn(0f, 0.84f) / 0.84f
-            // The face center is 0.50, not the old shifted source center (about 0.517).
-            // Crop to the V-shaped lower-beak interior, protecting both cheeks.
-            val mouth = Path().apply {
-                moveTo(dst.left + dst.width() * 0.419f, dst.top + dst.height() * 0.535f)
-                quadTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * 0.560f,
-                       dst.left + dst.width() * 0.586f, dst.top + dst.height() * 0.535f)
-                lineTo(dst.left + dst.width() * 0.500f, dst.top + dst.height() * (0.640f + opening * 0.016f))
-                close()
-            }
-            canvas.clipPath(mouth)
-            // Small optical correction to the imported talk frame.
-            canvas.translate(-dst.width() * 0.012f, 0f)
-            canvas.drawBitmap(assets.talk, null, dst, paint)
-            canvas.restore()
-        }
+        drawBody(canvas)
+        drawHeadGroup(canvas)
 
         canvas.restore()
         postInvalidateOnAnimation()
     }
 
-    private fun drawClosedEye(
-        canvas: Canvas,
-        dst: RectF,
-        centerX: Float,
-        centerY: Float,
-        widthFraction: Float,
-        intensity: Float
-    ) {
-        // The generated blink art still had exposed pupils. Cover the entire eye opening
-        // with a feather-toned lid, then draw the dark curved lash line.
-        val x = dst.left + dst.width() * centerX
-        val y = dst.top + dst.height() * centerY
-        val halfW = dst.width() * widthFraction * 0.5f
-        val eyeHeight = dst.height() * 0.047f
-        val openness = if (intensity > 0.57f) 1f else (intensity / 0.57f)
+    private fun drawBody(canvas: Canvas) {
+        val seconds = (System.nanoTime() - startedAt) / 1_000_000_000.0
+        val breathe = 1f + sin(seconds * 1.45).toFloat() * 0.004f
+
+        // Use only the upper half of the body source so the stream layout is shoulders-up.
+        val src = Rect(0, 0, layers.body.width, (layers.body.height * 0.52f).toInt())
+        val dst = RectF(48f, 285f, 432f, 720f)
+
         canvas.save()
-        val cover = Path().apply {
-            moveTo(x - halfW * 1.11f, y + eyeHeight * 0.34f)
-            quadTo(x, y - eyeHeight * 1.1f, x + halfW * 1.1f, y + eyeHeight * 0.28f)
-            quadTo(x, y + eyeHeight * 0.92f, x - halfW * 1.11f, y + eyeHeight * 0.34f)
-            close()
-        }
-        lidPaint.alpha = (255f * openness).toInt().coerceIn(0, 255)
-        canvas.drawPath(cover, lidPaint)
-        val lash = Path().apply {
-            moveTo(x - halfW * 1.1f, y + eyeHeight * 0.26f)
-            quadTo(x, y + eyeHeight * 0.65f, x + halfW * 1.1f, y + eyeHeight * 0.26f)
-        }
-        lashPaint.strokeWidth = dst.width() * 0.009f
-        lashPaint.alpha = lidPaint.alpha
-        canvas.drawPath(lash, lashPaint)
+        canvas.scale(1f, breathe, 240f, 650f)
+        canvas.drawBitmap(layers.body, src, dst, paint)
         canvas.restore()
     }
 
-    private fun region(
-        dst: RectF,
-        x0: Float,
-        y0: Float,
-        x1: Float,
-        y1: Float
-    ): RectF = RectF(
-        dst.left + dst.width() * x0,
-        dst.top + dst.height() * y0,
-        dst.left + dst.width() * x1,
-        dst.top + dst.height() * y1
-    )
+    private fun drawHeadGroup(canvas: Canvas) {
+        val head = RectF(100f, 8f, 380f, 387f)
+        val pivotX = 240f
+        val pivotY = 245f
 
-    private fun buildHeadPath(dst: RectF): Path {
-        fun x(v: Float) = dst.left + dst.width() * v
-        fun y(v: Float) = dst.top + dst.height() * v
+        canvas.save()
+        matrix.reset()
+        camera.save()
+        camera.rotateY(yaw * 15.5f)
+        camera.rotateX(-pitch * 10.0f)
+        camera.getMatrix(matrix)
+        camera.restore()
+        matrix.preTranslate(-pivotX, -pivotY)
+        matrix.postTranslate(
+            pivotX + yaw * 6.0f,
+            pivotY + pitch * 5.0f
+        )
+        canvas.concat(matrix)
+        canvas.rotate(roll * 9.0f, pivotX, pivotY)
 
-        // Approximation of the user's outlined movable area:
-        // hair + face + small neck ruff, explicitly excluding both shoulders.
-        return Path().apply {
-            moveTo(x(0.50f), y(0.015f))
-            cubicTo(x(0.30f), y(0.015f), x(0.13f), y(0.08f), x(0.085f), y(0.24f))
-            cubicTo(x(0.045f), y(0.38f), x(0.11f), y(0.54f), x(0.245f), y(0.595f))
-            cubicTo(x(0.30f), y(0.62f), x(0.34f), y(0.61f), x(0.39f), y(0.64f))
-            cubicTo(x(0.43f), y(0.67f), x(0.47f), y(0.685f), x(0.50f), y(0.69f))
-            cubicTo(x(0.54f), y(0.685f), x(0.58f), y(0.665f), x(0.62f), y(0.635f))
-            cubicTo(x(0.67f), y(0.605f), x(0.71f), y(0.615f), x(0.76f), y(0.59f))
-            cubicTo(x(0.90f), y(0.52f), x(0.965f), y(0.36f), x(0.915f), y(0.22f))
-            cubicTo(x(0.86f), y(0.075f), x(0.70f), y(0.015f), x(0.50f), y(0.015f))
-            close()
+        canvas.drawBitmap(layers.head, null, head, paint)
+
+        // Real eye-shaped occlusion. The original neutral eye stays underneath.
+        drawBlink(canvas, head, viewerLeft = true, blink = blinkRight)
+        drawBlink(canvas, head, viewerLeft = false, blink = blinkLeft)
+
+        drawMouth(canvas, head, jaw)
+
+        canvas.restore()
+    }
+
+    private fun drawBlink(canvas: Canvas, head: RectF, viewerLeft: Boolean, blink: Float) {
+        // Real human blinks frequently peak around ~0.5-0.7 in MediaPipe.
+        val p = smooth01(((blink - 0.07f) / 0.55f).coerceIn(0f, 1f))
+        if (p <= 0.001f) return
+
+        val eye = if (viewerLeft) {
+            RectF(
+                head.left + head.width() * 0.245f,
+                head.top + head.height() * 0.555f,
+                head.left + head.width() * 0.445f,
+                head.top + head.height() * 0.675f
+            )
+        } else {
+            RectF(
+                head.left + head.width() * 0.555f,
+                head.top + head.height() * 0.555f,
+                head.left + head.width() * 0.755f,
+                head.top + head.height() * 0.675f
+            )
         }
+
+        val seam = eye.centerY() + eye.height() * 0.08f
+        val path = eyePath(eye)
+
+        // Upper lid comes down and lower lid rises slightly.
+        val upperBottom = eye.top + (seam - eye.top) * p
+        val lowerTop = eye.bottom - (eye.bottom - seam) * p
+
+        canvas.save()
+        canvas.clipPath(path)
+        canvas.clipRect(eye.left, eye.top, eye.right, upperBottom)
+        canvas.drawColor(furPaint.color)
+        canvas.restore()
+
+        canvas.save()
+        canvas.clipPath(path)
+        canvas.clipRect(eye.left, lowerTop, eye.right, eye.bottom)
+        canvas.drawColor(furPaint.color)
+        canvas.restore()
+
+        // Use the generated rabbit's own eyelid shapes for the seam/detail.
+        val upperLid = if (viewerLeft) layers.upperLidLeft else layers.upperLidRight
+        val closedLid = if (viewerLeft) layers.closedLidLeft else layers.closedLidRight
+
+        val lidDst = RectF(
+            eye.left - eye.width() * 0.08f,
+            eye.top + eye.height() * (0.05f + 0.38f * p),
+            eye.right + eye.width() * 0.08f,
+            eye.top + eye.height() * (0.48f + 0.38f * p)
+        )
+        paint.alpha = (255 * p).toInt().coerceIn(0, 255)
+        canvas.drawBitmap(upperLid, null, lidDst, paint)
+
+        if (p > 0.72f) {
+            val q = ((p - 0.72f) / 0.28f).coerceIn(0f, 1f)
+            val closedDst = RectF(
+                eye.left - eye.width() * 0.02f,
+                seam - eye.height() * 0.18f,
+                eye.right + eye.width() * 0.02f,
+                seam + eye.height() * 0.18f
+            )
+            paint.alpha = (255 * q).toInt()
+            canvas.drawBitmap(closedLid, null, closedDst, paint)
+        }
+        paint.alpha = 255
+
+        // Guarantee full anatomical closure: the aperture itself vanishes.
+        if (p >= 0.96f) {
+            canvas.save()
+            canvas.clipPath(path)
+            canvas.drawColor(furPaint.color)
+            canvas.restore()
+            val closedDst = RectF(
+                eye.left - eye.width() * 0.02f,
+                seam - eye.height() * 0.18f,
+                eye.right + eye.width() * 0.02f,
+                seam + eye.height() * 0.18f
+            )
+            canvas.drawBitmap(closedLid, null, closedDst, paint)
+        }
+    }
+
+    private fun drawMouth(canvas: Canvas, head: RectF, rawJaw: Float) {
+        val p = smooth01(((rawJaw - 0.04f) / 0.72f).coerceIn(0f, 1f))
+
+        // This rectangle replaces only the muzzle/mouth module, never the whole face.
+        val mouth = RectF(
+            head.left + head.width() * 0.305f,
+            head.top + head.height() * 0.665f,
+            head.left + head.width() * 0.695f,
+            head.top + head.height() * 0.865f
+        )
+        val splitY = mouth.top + mouth.height() * 0.48f
+
+        // Deepest layer: mouth interior is revealed only by opening.
+        if (p > 0.01f) {
+            val inside = RectF(
+                mouth.left + mouth.width() * 0.24f,
+                splitY - 2f,
+                mouth.right - mouth.width() * 0.24f,
+                splitY + mouth.height() * (0.12f + 0.43f * p)
+            )
+            paint.alpha = (210 + 45 * p).toInt()
+            canvas.drawBitmap(layers.mouthInside, null, inside, paint)
+            paint.alpha = 255
+        }
+
+        val src = layers.mouthNeutral
+        val splitSrc = (src.height * 0.48f).toInt()
+
+        // Fixed upper muzzle + nose.
+        canvas.drawBitmap(
+            src,
+            Rect(0, 0, src.width, splitSrc),
+            RectF(mouth.left, mouth.top, mouth.right, splitY),
+            paint
+        )
+
+        // Lower jaw only. Hinge is at the mouth corner line.
+        canvas.save()
+        val hingeX = mouth.centerX()
+        val hingeY = splitY
+        canvas.translate(0f, mouth.height() * 0.16f * p)
+        canvas.scale(1f + 0.015f * p, 1f + 0.23f * p, hingeX, hingeY)
+        canvas.drawBitmap(
+            src,
+            Rect(0, splitSrc, src.width, src.height),
+            RectF(mouth.left, splitY, mouth.right, mouth.bottom),
+            paint
+        )
+        canvas.restore()
+    }
+
+    private fun eyePath(r: RectF): Path = Path().apply {
+        moveTo(r.left, r.centerY())
+        cubicTo(
+            r.left + r.width() * 0.22f, r.top,
+            r.left + r.width() * 0.75f, r.top,
+            r.right, r.centerY()
+        )
+        cubicTo(
+            r.left + r.width() * 0.78f, r.bottom,
+            r.left + r.width() * 0.22f, r.bottom,
+            r.left, r.centerY()
+        )
+        close()
+    }
+
+    private fun smooth01(value: Float): Float {
+        val t = value.coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
     }
 }
