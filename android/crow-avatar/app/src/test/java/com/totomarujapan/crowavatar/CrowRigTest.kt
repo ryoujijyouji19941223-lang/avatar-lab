@@ -70,18 +70,36 @@ class CrowRigTest {
         val json = JSONObject(context.assets.open("avatar_images.json").bufferedReader().use { it.readText() })
         val bytes = Base64.decode(json.getString("neutral").substringAfter(","),Base64.DEFAULT)
         val source = requireNotNull(BitmapFactory.decodeByteArray(bytes,0,bytes.size))
+        val reference = Bitmap.createBitmap(480,480,Bitmap.Config.ARGB_8888).also {
+            Canvas(it).apply { drawColor(Color.rgb(7,9,13));drawBitmap(source,0f,0f,null) }
+        }
         val closed = render()
         // The previous wide cavity painted these feather regions purple even
         // at jaw=0. Comparing only open vs closed could never catch that bug.
         val cheeks = listOf(Rect(205,275,228,320),Rect(276,275,296,320))
-        cheeks.forEach { same(source,closed,it) }
-        for (point in listOf(240 to 300,251 to 300,255 to 304))
-            assertEquals("closed mouth preserves source beak",source.getPixel(point.first,point.second),closed.getPixel(point.first,point.second))
+        fun originalFeathers(b: Bitmap) {
+            for (r in cheeks) for(y in r.top until r.bottom) for(x in r.left until r.right) {
+                // Original opaque feathers must survive. Transparent mouth
+                // holes are deliberately repaired; faint export transparency
+                // can change rounding by 1-2 channels over the feather backing.
+                if (Color.alpha(source.getPixel(x,y))<250) continue
+                val a=reference.getPixel(x,y);val actual=b.getPixel(x,y)
+                assertTrue("source feather at $x,$y",abs(Color.red(a)-Color.red(actual))<=2 &&
+                    abs(Color.green(a)-Color.green(actual))<=2 && abs(Color.blue(a)-Color.blue(actual))<=2)
+            }
+        }
+        originalFeathers(closed)
+        for (point in listOf(240 to 300,251 to 300,255 to 304)) {
+            val c=closed.getPixel(point.first,point.second)
+            assertEquals("closed lower beak stays opaque",255,Color.alpha(c))
+            assertTrue("closed beak has grey material, not purple cavity",abs(Color.red(c)-Color.green(c))<15)
+        }
         for (i in 1..10) render(FacePose(jaw=i/10f)).useBitmap { posed ->
-            cheeks.forEach { same(source,posed,it) }
+            originalFeathers(posed)
+            cheeks.forEach { same(closed,posed,it) }
             same(closed,posed,Rect(197,207,305,285))
         }
-        closed.recycle(); source.recycle()
+        closed.recycle(); reference.recycle();source.recycle()
     }
     @Test fun bodyNeverFollowsHeadAndHingeKeepsMouthCentered() {
         val base=render()

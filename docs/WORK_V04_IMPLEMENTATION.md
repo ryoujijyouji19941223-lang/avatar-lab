@@ -228,13 +228,21 @@ hinge-transformed lower-beak corners/tip. At rest its footprint matches the
 lower-beak cutout; while opening it covers only the space vacated by that beak.
 The fixed upper beak remains frontmost. Purple floor shading and a small tongue
 are clipped inside this narrower cavity, with the tongue above the moving lower
-rim. Head/eye/body layers, pose motion, jaw input and eye correction are unchanged.
+rim. Inspecting the source also revealed that dark pixels around the original
+mouth and within the lower beak had been exported transparent. Narrowing the
+cavity alone exposed those as black background holes. Adjacent cheek texture
+now backs this area underneath the original HEAD portrait, and the lower beak
+has an opaque grey material backing beneath its source texture. Eye/body layers,
+head pose motion, jaw input and eye correction are unchanged.
 
 The previous automated test checked upper-beak invariance and whether the mouth
 floor/tongue were visible, but not whether closed/open cheeks matched the source.
 It therefore passed an already incorrect neutral image. New native pixel checks
-compare both cheeks directly with the original portrait at closed and ten jaw
-positions, check source beak pixels at rest, and broaden upper-beak invariance.
+compare original opaque cheek feathers at closed and ten jaw positions, check
+opaque grey beak pixels at rest, and broaden upper-beak invariance. Source
+comparisons use the same background and allow two channel levels of rounding
+from the source's faint export transparency; transparent holes are intentionally
+repaired. Full cheek rectangles must also stay pixel-identical across jaw motion.
 Previews include slight, partial, full and yaw-plus-open mouth. CI and visual
 inspection of the new artifact must succeed before delivering the updated APK.
 

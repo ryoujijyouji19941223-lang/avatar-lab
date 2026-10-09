@@ -29,6 +29,11 @@ object RigGeometry {
         moveTo(230f, 288f); quadTo(249f, 299f, 274f, 285f)
         lineTo(251f, 315f); close()
     }
+    fun mouthSurround() = Path().apply {
+        moveTo(199f,242f); quadTo(251f,272f,302f,242f)
+        quadTo(286f,301f,251f,317f)
+        quadTo(221f,300f,199f,242f); close()
+    }
     // Anatomical LEFT is on the viewer's right. Camera input is not mirrored.
     val leftEye = EyeContour(
         floatArrayOf(278f, 214f, 285f, 183f, 311f, 169f, 337f, 178f),
@@ -80,14 +85,36 @@ object AvatarAssets {
             c.clipOutPath(RigGeometry.head())
             c.drawBitmap(source, 0f, 0f, paint)
         }
-        val head = layer(RigGeometry.head())
+        val head = bitmap { c ->
+            c.clipPath(RigGeometry.head())
+            c.save(); c.clipPath(RigGeometry.mouthSurround())
+            // The source's dark-mouth pixels were made transparent during
+            // export. Restore a feather backing from the adjacent cheeks,
+            // behind the original portrait, rather than expose the background
+            // or fill the whole wedge with mouth colour.
+            c.drawColor(Color.rgb(61,56,63))
+            c.drawBitmap(source,Rect(200,260,214,311),RectF(199f,242f,251f,317f),paint)
+            c.drawBitmap(source,Rect(286,260,300,311),RectF(251f,242f,303f,317f),paint)
+            c.restore(); c.drawBitmap(source,0f,0f,paint)
+        }
         Canvas(head).apply {
             val erase = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) }
             drawPath(RigGeometry.leftEye.aperture(), erase); drawPath(RigGeometry.rightEye.aperture(), erase)
             drawPath(RigGeometry.upperBeak(), erase); drawPath(RigGeometry.lowerBeak(), erase)
         }
+        val lower = bitmap { c ->
+            c.clipPath(RigGeometry.lowerBeak())
+            // An opaque material backing repairs dark/transparent source
+            // pixels so the moving lower beak can occlude its own mouth floor.
+            val backing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = LinearGradient(251f,286f,251f,315f,
+                    Color.rgb(68,63,74),Color.rgb(38,32,43),Shader.TileMode.CLAMP)
+            }
+            c.drawPath(RigGeometry.lowerBeak(),backing)
+            c.drawBitmap(source,0f,0f,paint)
+        }
         val result = AvatarLayers(body, head, eye(RigGeometry.leftEye), eye(RigGeometry.rightEye),
-            layer(RigGeometry.lowerBeak()), layer(RigGeometry.upperBeak()))
+            lower, layer(RigGeometry.upperBeak()))
         source.recycle()
         return result
     }
