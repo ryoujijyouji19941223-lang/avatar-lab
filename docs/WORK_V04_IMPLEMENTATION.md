@@ -259,3 +259,32 @@ inspection of the new artifact must succeed before delivering the updated APK.
 Galaxy feedback about improved eyes is retained as user observation, not a claim
 that every pose/wink acceptance condition has been measured. The phone still
 needs to confirm corrected mouth appearance and 30-second live stability.
+
+## Successful v0.4.2 build receipt (2026-10-09 JST)
+
+- Build commit: `e6627feac9f5bf3900f2d1476ef8d4ebf3d40234`.
+- [Successful Actions run](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37924999476)
+  completes `testDebugUnitTest lintDebug assembleDebug` and both artifact uploads.
+- Twelve tests pass: six native rig tests and six eye-input tests; zero failures
+  or errors. Lint has zero errors and 24 warnings in the checks artifact.
+- [APK artifact](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37924999476/artifacts/11613129159).
+- [Checks and native previews](https://github.com/ryoujijyouji19941223-lang/avatar-lab/actions/runs/37924999476/artifacts/11613363942).
+- APK extracted directly from Actions: 55,774,251 bytes, version `0.4.2-work`
+  (42), same Work package; minSdk 26 / targetSdk 35. Includes arm64-v8a for
+  Galaxy and the 3,758,596-byte Face Landmarker model.
+- SHA-256: `de94185446c781112be248e328e82c32735dc541b66ef55941d6538acdf5c0ee`.
+- `apksigner verify --verbose --print-certs` verifies v2 signature, same test
+  certificate SHA-256 as the previous Work APK:
+  `4df18e204b454053c3474ee42864732eb58358055c295482dc681674430d6046`.
+  Update installation is supported without uninstalling the previous Work app.
+- Neutral, partial/full-mouth and yaw-plus-mouth native images were visually
+  inspected. The closed mouth no longer has the wide purple wedge; the open
+  cavity/tongue sit between the fixed upper and hinged lower beaks.
+- Two CI correction rounds were needed: the first original-source reference
+  did not composite its slight transparency over the same background; repaired
+  opaque lower material then exposed that Camera rotation was not exercised in
+  the native gallery. Explicit hinge math and a full-displacement assertion
+  resolved this. Visibility and cheek checks were retained.
+- Phone confirmation remains required for the new mouth's appearance and live
+  30-second stability. User-reported eye improvement is preserved; eye tracker
+  code is unchanged. This receipt is documentation only after the successful run.
